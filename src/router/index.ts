@@ -34,13 +34,13 @@ const routes: Array<RouteRecordRaw> = [
         meta: { requiresAuth: true },
         props: true,
       },
-      // {
-      //   path: 'checkpoint/detail/:id',
-      //   name: 'checkpoint-detail',
-      //   component: () => import('@/views/CheckPoint/CPDetail.vue'),
-      //   meta: { requiresAuth: true },
-      //   props: true,
-      // },
+      {
+        path: 'checkpoint/detail/:id',
+        name: 'checkpoint-detail',
+        component: () => import('@/views/CheckPoint/CPDetail.vue'),
+        meta: { requiresAuth: true },
+        props: true,
+      },
       // {
       //   path: 'checkpoint/create',
       //   name: 'checkpoint-create',
