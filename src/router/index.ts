@@ -27,14 +27,13 @@ const routes: Array<RouteRecordRaw> = [
         component: () => import('@/views/HomePage.vue'),
         meta: { requiresAuth: true }
       },
-      // {
-      //   path: 'checkpoint',
-      //   name: 'checkpoint',
-      //   component: () => import('@/views/CheckPoint/CPIndex.vue'),
-      //   meta: { requiresAuth: true },
-      //   props: true,
-        
-      // },
+      {
+        path: 'checkpoint',
+        name: 'checkpoint',
+        component: () => import('@/views/CheckPoint/CPIndex.vue'),
+        meta: { requiresAuth: true },
+        props: true,
+      },
       // {
       //   path: 'checkpoint/detail/:id',
       //   name: 'checkpoint-detail',
