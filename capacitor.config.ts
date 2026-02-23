@@ -4,9 +4,14 @@ const config: CapacitorConfig = {
   appId: 'security.app',
   appName: 'security-app',
   webDir: 'dist',
+  plugins: {
+    CapacitorHttp: {
+      enabled: true, // Kích hoạt HTTP native
+    },
+  },
   server: {
     // 10.0.2.2 là địa chỉ IP máy tính host khi nhìn từ Emulator
-    url: 'http://192.168.100.62:8101', 
+    url: 'http://10.0.149.28:8100', 
     cleartext: true // Cho phép chạy HTTP (không cần HTTPS)
   }
 };

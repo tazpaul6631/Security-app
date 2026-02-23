@@ -1,7 +1,7 @@
 import { ref, onMounted } from 'vue';
 import { Network, ConnectionStatus } from '@capacitor/network';
-import storage from '../services/storage.service';
-import { ImageService } from '../services/image.service';
+import storage from '@/services/storage.service';
+import { ImageService } from '@/services/image.service';
 
 // 1. Định nghĩa cấu trúc dữ liệu cho một mục trong hàng chờ
 interface PendingItem {

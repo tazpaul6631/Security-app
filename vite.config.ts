@@ -7,6 +7,7 @@ import { defineConfig } from 'vite'
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  base: './',
   plugins: [
     vue(),
     legacy()
@@ -21,7 +22,7 @@ export default defineConfig({
     environment: 'jsdom'
   },
   server: {
-    host: '192.168.100.62', // Cho phép truy cập từ IP bên ngoài (quan trọng)
-    port: 8101,      // Port mặc định của Vite (hoặc port bạn đang dùng)
+    host: '10.0.149.28', // Cho phép truy cập từ IP bên ngoài (quan trọng)
+    port: 8100,      // Port mặc định của Vite (hoặc port bạn đang dùng)
   }
 })
