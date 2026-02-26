@@ -1,55 +1,59 @@
-import { Storage } from '@ionic/storage';
+// services/storage.service.ts
+import { useSQLite } from '@/composables/useSQLite';
 
 class StorageService {
-  private _storage: Storage | null = null;
+  // Chúng ta không giải nén ở ngoài, mà gọi useSQLite() để lấy các hàm thực thi
+  private sqlite = useSQLite();
 
-  constructor() {
-    this.init();
+  // Đảm bảo SQLite đã sẵn sàng trước khi thực hiện bất kỳ thao tác nào
+  private async ensureReady() {
+    // Luôn gọi initDatabase, hàm này đã có logic xử lý "initializationPromise" 
+    // bên useSQLite để tránh khởi tạo chồng chéo
+    await this.sqlite.initDatabase();
   }
 
-  // 1. Khởi tạo Storage
-  async init(): Promise<void> {
-    if (this._storage !== null) return; // Đã init rồi thì bỏ qua
-
-    const storage = new Storage();
-    const created = await storage.create();
-    this._storage = created;
-    console.log('--- Storage: Đã khởi tạo thành công ---');
-  }
-
-  // 2. Đảm bảo storage đã sẵn sàng trước khi thực hiện các lệnh khác
-  private async ensureStorage(): Promise<Storage> {
-    if (this._storage === null) {
-      await this.init();
-    }
-    return this._storage!;
-  }
-
-  // 3. Lưu dữ liệu
+  // 1. Lưu dữ liệu
   async set(key: string, value: any): Promise<void> {
-    const store = await this.ensureStorage();
-    await store.set(key, value);
+    try {
+      await this.ensureReady();
+      await this.sqlite.setItem(key, value);
+    } catch (error) {
+      console.error(`StorageService Error (set ${key}):`, error);
+    }
   }
 
-  // 4. Lấy dữ liệu
-  async get(key: string): Promise<any> {
-    const store = await this.ensureStorage();
-    return await store.get(key);
+  // 2. Lấy dữ liệu
+  async get<T = any>(key: string): Promise<T | null> {
+    try {
+      await this.ensureReady();
+      return await this.sqlite.getItem(key);
+    } catch (error) {
+      console.error(`StorageService Error (get ${key}):`, error);
+      return null;
+    }
   }
 
-  // 5. Xóa một key cụ thể
+  // 3. Xóa một key cụ thể
   async remove(key: string): Promise<void> {
-    const store = await this.ensureStorage();
-    await store.remove(key);
+    try {
+      await this.ensureReady();
+      await this.sqlite.removeItem(key);
+    } catch (error) {
+      console.error(`StorageService Error (remove ${key}):`, error);
+    }
   }
 
-  // 6. Xóa sạch dữ liệu (Dùng khi logout)
+  // 4. Xóa sạch dữ liệu (Dùng khi logout)
   async clear(): Promise<void> {
-    const store = await this.ensureStorage();
-    await store.clear();
+    try {
+      await this.ensureReady();
+      await this.sqlite.logout();
+    } catch (error) {
+      console.error(`StorageService Error (clear):`, error);
+    }
   }
 }
 
-// Export một instance duy nhất (Singleton)
+// Xuất ra một instance duy nhất (Singleton)
 const storageService = new StorageService();
 export default storageService;

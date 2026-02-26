@@ -1,208 +1,223 @@
 <template>
     <ion-page>
+      <div v-if="syncStatus.isSyncing" class="sync-overlay">
+            <div class="sync-box">
+                <ion-text color="primary">
+                    <h3>{{ syncStatus.message }}</h3>
+                </ion-text>
+                <ion-progress-bar :value="syncStatus.progress / 100" color="success"></ion-progress-bar>
+                <p>{{ syncStatus.progress }}%</p>
+            </div>
+        </div>
+
         <div class="flex-content">
-            <ion-card>
-                <ion-card-header collapse="condense">
+            <ion-card class="login-card">
+                <ion-card-header>
                     <ion-card-title size="large">Login</ion-card-title>
                 </ion-card-header>
+
                 <ion-card-content>
                     <ion-input
                         v-model="loginDetail.userCode"
-                        ref="inputEmail"
                         label="Username" 
                         label-placement="floating" 
                         fill="outline" 
                         type="email"
                         placeholder="Enter Username"
                         :clear-input="true"
-                        @ionInput="validateInput"></ion-input>
+                        class="ion-margin-bottom"
+                        @ion-blur="markTouched"></ion-input>
                 
                     <br>
 
                     <ion-input
                         v-model="loginDetail.userPassword"
-                        ref="inputPass"
                         label="Password" 
                         label-placement="floating" 
                         fill="outline" 
                         placeholder="Enter Password"
                         type="password"
-                        @ionInput="validateInput">
+                        @keyup.enter="handleLogin">
                         <ion-input-password-toggle slot="end"></ion-input-password-toggle>
                     </ion-input>
                     
-                    <!-- <ion-text v-if="arrayData.inputValidateEmail && arrayData.inputValidatePass" color="danger"><ion-icon :icon="warning"></ion-icon>Email or Password incorrect</ion-text> -->
                     <br>
 
-                    <p v-if="errorMessage" style="color: red; text-align: center;">
+                    <div v-if="errorMessage" style="color: red; text-align: center;">
                         {{ errorMessage }}
-                    </p>
+                    </div>
 
 
-                    <ion-button :disabled="arrayData.checkedInput" @click="handleLogin" expand="block" color="success" class="text-white">Login</ion-button>
+                    <ion-button 
+                        :disabled="isButtonDisabled || isLoading"
+                        @click="handleLogin" 
+                        expand="block" 
+                        color="success" 
+                        class="ion-margin-top"
+                    >
+                        <ion-spinner v-if="isLoading" name="crescent"></ion-spinner>
+                        <span v-else>Login</span>
+                    </ion-button>
                 </ion-card-content>
             </ion-card>
-
-            <!-- <ion-loading
-                :is-open="isLoading"
-                message="Đang xác thực..."
-            ></ion-loading>
-
-            <ion-toast
-                :is-open="!!errorMessage"
-                :message="errorMessage"
-                :duration="2000"
-                color="danger"
-                @didDismiss="errorMessage = ''"
-            ></ion-toast> -->
         </div>
     </ion-page>
 </template>
 
 <script setup lang="ts">
 import { 
-    IonCardHeader, 
-    IonCardTitle, 
-    IonButton, 
-    IonCard, 
-    IonInput, 
-    // IonIcon, 
-    // IonText, 
-    IonInputPasswordToggle,
-    IonCardContent,
-    IonPage,
-    IonLoading,
-    IonToast
+    IonCardHeader, IonCardTitle, IonButton, IonCard, IonInput, 
+    IonInputPasswordToggle, IonCardContent, IonPage, IonLoading, 
+    IonSpinner, IonProgressBar, IonText 
 } from '@ionic/vue';
-// import { warning } from 'ionicons/icons';
 import { useRouter } from 'vue-router';
-import { reactive, ref } from 'vue';
-import  Login from '@/api/Login'
+import { reactive, ref, computed } from 'vue';
+import Login from '@/api/Login';
 import { useStore } from 'vuex';
+import storageService from '@/services/storage.service';
+// Import thêm các API của bạn để truyền vào action sync
+import AppSetting from '@/api/AppSetting';
+import CheckPointScanQr from '@/api/CheckPointScanQr';
+import MenuCategory from '@/api/MenuCategory';
+import Role from '@/api/Role';
+import RoleMenuCategory from '@/api/RoleMenuCategory';
+import PointReport from '@/api/PointReport';
+import AreaBU from '@/api/AreaBU';
 
-const router = useRouter()
+const router = useRouter();
+const store = useStore();
 
-const inputEmail = ref()
-const inputPass = ref()
-const errorMessage = ref('')
+const errorMessage = ref('');
+const isLoading = ref(false);
+
+// Lấy trạng thái đồng bộ từ Vuex
+const syncStatus = computed(() => ({
+    progress: store.state.syncProgress,
+    message: store.state.syncMessage,
+    isSyncing: store.state.isSyncing
+}));
 
 const loginDetail = reactive({
     userCode: '',
     userPassword: '',
-})
+});
 
-interface LoginResponse {
-  success: boolean;
-  data: ''; // Đây chính là thuộc tính 'data' bạn đang gọi
-}
+const isButtonDisabled = computed(() => {
+    return !loginDetail.userCode.trim() || !loginDetail.userPassword.trim();
+});
 
-const storeLoginUser = ref<LoginResponse | null>(null);
-
-//Check validate input **********
-const arrayData = reactive ({
-    checkedInput: true,
-    inputValidateEmail: true,
-    inputValidatePass: true
-})
-
-const validateInput = (event: any) => {
-    const value = event.target.value
-    const valueIpnut = event.target.label
-    
-    errorMessage.value = ''
-
-    if (valueIpnut === 'Username' && value === '') {
-        inputEmail.value.$el.classList.add('ion-invalid')
-        inputEmail.value.$el.classList.add('ion-touched')
-        arrayData.inputValidateEmail = true
-        errorMessage.value = 'Code không được bỏ trống'
-    } else if (valueIpnut === 'Username' && value !== '') {
-        arrayData.inputValidateEmail = false
-        inputEmail.value.$el.classList.remove('ion-invalid')
-        inputEmail.value.$el.classList.remove('ion-touched')
-    }
-    
-    if (valueIpnut === 'Password' && value === '') {
-        inputPass.value.$el.classList.add('ion-invalid')
-        inputPass.value.$el.classList.add('ion-touched')
-        arrayData.inputValidatePass = true
-        errorMessage.value = 'Password không được bỏ trống'
-    } else if (valueIpnut === 'Password' && value !== '') {
-        arrayData.inputValidatePass = false
-        inputPass.value.$el.classList.remove('ion-invalid')
-        inputPass.value.$el.classList.remove('ion-touched')
-    }
-        
-    if (!arrayData.inputValidateEmail && !arrayData.inputValidatePass) {
-        arrayData.checkedInput = false
-    } else if (!arrayData.inputValidateEmail || !arrayData.inputValidatePass) {
-        arrayData.checkedInput = true
-    } else if (arrayData.inputValidateEmail && arrayData.inputValidatePass) {
-        errorMessage.value = 'Code và Password không được bỏ trống'
-    }
-}
-//*****************>9
-
-//Gọi API login *************
-const store = useStore();
-const error = ref(null);
-const isLoading = ref(false); 
-
-const fetchUserValidate = async () => {
-    isLoading.value = true
-    error.value = null
-
-    try {
-        const responseBU = await Login.postUserValidate(loginDetail)
-        storeLoginUser.value = responseBU.data
-        console.log(storeLoginUser.value);
-        
-        if (responseBU.data.success) {
-            // A. Lưu token hoặc trạng thái đăng nhập
-            localStorage.setItem('user_token', 'fake-token-12345');
-
-            if (storeLoginUser.value?.data) {
-                console.log(storeLoginUser.value.data);
-                
-                store.commit('SET_DATAUSER', storeLoginUser.value?.data);
-                console.log(store.state.dataUser);
-                router.replace('/home');
-            }
-            
-            console.log(store.state.dataUser);
-            
-        } else {
-            errorMessage.value = 'Thông tin đăng nhập chưa tồn tại'
-        }
-    } catch (err) {
-        console.error('API Error:', err)
-        error.value = (err as any).response?.data?.message || 'Không thể lấy dữ liệu!'
-    } finally {
-        isLoading.value = false
-    }
+const markTouched = (event: any) => {
+    event.target.classList.add('ion-touched');
 };
 
 const handleLogin = async () => {
-  try {
-    // Reset lỗi
+    if (isButtonDisabled.value) return;
+
+    isLoading.value = true;
     errorMessage.value = '';
 
-    // Gọi API 
-    fetchUserValidate()
+    try {
+        // BƯỚC 1: Xác thực tài khoản
+        const responseBU = await Login.postUserValidate(loginDetail);
+        const result = responseBU.data;
+        console.log(result);
+        
+        if (result?.success && result.data) {
+            const userData = result.data;
+            
+            // Lưu thông tin User cơ bản vào RAM và SQLite
+            store.commit('SET_DATAUSER', userData);
+            store.commit('SET_TOKEN', userData.userPassword);
+            await storageService.set('user_data', userData);
+            await storageService.set('user_token', userData.userPassword);
 
-  } catch (error: any) {
-    errorMessage.value = error.message || 'Đăng nhập thất bại';
-    console.error(error);
-  }
-}
-//*************>
+            // BƯỚC 2: Gọi Action đồng bộ (Pre-fetch dữ liệu offline)
+            // Truyền mảng các hàm API theo đúng thứ tự nghĩa trong Store
+            const apiList = {
+                // app_settings: () => AppSetting.postAppSettings(),
+                // roles: () => Role.postRole(),
+                // users: () => Login.postUser(),
+                // menu_categories: () => MenuCategory.postMenuCategory(),
+                // role_menu_mapping: () => RoleMenuCategory.postRoleMenuCategory(),
+                checkpoints: () => CheckPointScanQr.postCheckPointView(),
+                checkpoints_id: () => PointReport.postPointReportView(),
+                area_bu: () => AreaBU.postAreaBU(),
+            };
+
+            await store.dispatch('syncAllData', apiList);
+
+            // BƯỚC 3: Chuyển trang sau khi đã có đủ data offline
+            router.replace('/home');
+        } else {
+            errorMessage.value = result?.message || 'Thông tin đăng nhập chưa chính xác';
+        }
+    } catch (err: any) {
+        errorMessage.value = 'Không thể kết nối đến máy chủ. Vui lòng kiểm tra internet!';
+        console.error(err);
+    } finally {
+        isLoading.value = false;
+    }
+};
 </script>
 
 <style scoped>
 .flex-content {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  background: #f4f5f8; /* Màu nền nhẹ cho chuyên nghiệp */
+}
+
+.login-card {
+  width: 100%;
+  max-width: 400px;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+}
+
+.error-message {
+  color: var(--ion-color-danger);
+  text-align: center;
+  margin-top: 15px;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.ion-margin-top {
+  margin-top: 20px;
+}
+
+.ion-margin-bottom {
+  margin-bottom: 15px;
+}
+
+.sync-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.95); /* Màu nền trắng mờ */
     display: flex;
     justify-content: center;
     align-items: center;
-    height: 100%;
+    z-index: 9999; /* Đảm bảo đè lên tất cả các thành phần khác */
+}
+
+.sync-box {
+    width: 80%;
+    max-width: 300px;
+    text-align: center;
+}
+
+.sync-box h3 {
+    margin-bottom: 20px;
+    font-weight: bold;
+}
+
+.sync-box p {
+    margin-top: 10px;
+    font-weight: 500;
 }
 </style>

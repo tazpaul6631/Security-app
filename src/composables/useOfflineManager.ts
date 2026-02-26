@@ -1,46 +1,33 @@
-import { ref, onMounted } from 'vue';
-import { Network, ConnectionStatus } from '@capacitor/network';
+import { ref, computed } from 'vue';
+// 🚀 1. Bỏ import Network đi vì ta sẽ lấy mạng từ Vuex
 import storage from '@/services/storage.service';
 import { ImageService } from '@/services/image.service';
+import PointReport from '@/api/PointReport';
+import store from '@/composables/useVuex'; // 🚀 2. Import Vuex Store vào đây
 
-// 1. Định nghĩa cấu trúc dữ liệu cho một mục trong hàng chờ
 interface PendingItem {
   id: number;
   url: string;
-  data: any;           // Dữ liệu JSON gửi kèm
-  imageFiles: string[]; // Danh sách tên file ảnh đã lưu trong máy
+  data: any;           
+  imageFiles: string[]; 
 }
 
+// 🚀 3. CHỈ CÒN LẠI 2 BIẾN NÀY LÀ GLOBAL (Bỏ hẳn isOnline và networkListener đi)
+const pendingItems = ref<PendingItem[]>([]);
+const isSyncing = ref(false);
+
 export function useOfflineManager() {
-  const isOnline = ref<boolean>(true);
-  const pendingItems = ref<PendingItem[]>([]);
 
-  // --- 1. Theo dõi trạng thái mạng ---
-  const initializeNetwork = async (): Promise<void> => {
-    const status: ConnectionStatus = await Network.getStatus();
-    isOnline.value = status.connected;
-
-    // Lắng nghe sự thay đổi mạng
-    await Network.addListener('networkStatusChange', (status: ConnectionStatus) => {
-      isOnline.value = status.connected;
-      if (status.connected) {
-        console.log('Mạng đã kết nối lại. Bắt đầu đồng bộ...');
-        syncData(); 
-      }
-    });
-  };
-
-  // --- 2. Tải danh sách chờ từ Storage ---
+  // --- Tải danh sách chờ từ Storage ---
   const loadPendingItems = async (): Promise<void> => {
     const data = await storage.get('offline_api_queue');
     pendingItems.value = (data as PendingItem[]) || [];
   };
 
-  // --- 3. Hàm gửi dữ liệu (Xử lý cả Online/Offline) ---
+  // --- Hàm gửi dữ liệu ---
   const sendData = async (url: string, data: any, imagesBase64: string[] = []): Promise<void> => {
     const id = Date.now();
     
-    // Lưu ảnh vật lý vào máy và lấy tên file (Tránh làm nặng Storage)
     const imageFiles: string[] = [];
     for (const base64 of imagesBase64) {
       try {
@@ -53,10 +40,10 @@ export function useOfflineManager() {
 
     const newItem: PendingItem = { id, url, data, imageFiles };
 
-    if (isOnline.value) {
+    // 🚀 4. ĐIỂM ĂN TIỀN: LẤY TRẠNG THÁI MẠNG TRỰC TIẾP TỪ VUEX STORE
+    if (store.state.isOnline) {
       try {
         await uploadToServer(newItem);
-        // Gửi xong thì xóa file ảnh cho sạch máy
         for (const f of imageFiles) await ImageService.deleteImage(f);
       } catch (error) {
         console.warn("Gửi trực tiếp thất bại, chuyển vào hàng chờ...");
@@ -73,54 +60,79 @@ export function useOfflineManager() {
     queue.push(item);
     await storage.set('offline_api_queue', queue);
     await loadPendingItems();
-  };
 
-  // --- 4. Cơ chế đồng bộ (Sync) ---
-  const syncData = async (): Promise<void> => {
-    if (!isOnline.value || pendingItems.value.length === 0) return;
-
-    // Copy mảng để xử lý tránh xung đột dữ liệu khi đang lặp
-    const queue = [...pendingItems.value];
+    const actualUser: any = store.state.dataUser;
+    console.log(item);
     
-    for (const item of queue) {
-      try {
-        await uploadToServer(item);
+    const mockReport = {
+      prId: `offline_${Date.now()}`, // Tạo ID tạm thời
+      cpId: item.data.cpId,
+      cpName: item.data.cpName || item.data.cpCode,
+      createdName: actualUser?.fullName || actualUser?.userName || 'Tôi (Đang Offline)',
+      createdAt: item.data.scanAt,
+      prHasProblem: item.data.prHasProblem,
+      prNote: item.data.prNote,
+      isOfflineMock: true // Cờ nhận biết để tô màu UI
+    };
 
-        // Thành công: Xóa khỏi Storage
-        const currentQueue: PendingItem[] = await storage.get('offline_api_queue') || [];
-        const updatedQueue = currentQueue.filter(i => i.id !== item.id);
-        await storage.set('offline_api_queue', updatedQueue);
-        
-        // Xóa ảnh vật lý sau khi đã tải lên thành công
-        for (const f of item.imageFiles) {
-          await ImageService.deleteImage(f);
-        }
-        
-        console.log(`Đồng bộ thành công item: ${item.id}`);
-      } catch (e) {
-        console.error("Đồng bộ thất bại, dừng hàng chờ để thử lại sau:", item.id);
-        break; 
+    store.commit('ADD_OFFLINE_REPORT', mockReport);
+  };
+
+  // --- Cơ chế đồng bộ ---
+  const syncData = async (): Promise<void> => {
+    // 🚀 5. CHECK MẠNG TỪ VUEX STORE
+    if (isSyncing.value || !store.state.isOnline) return;
+
+    isSyncing.value = true; 
+
+    try {
+      await loadPendingItems();
+      
+      if (pendingItems.value.length === 0) {
+        isSyncing.value = false; 
+        return;
       }
+
+      const queue = [...pendingItems.value];
+      
+      for (const item of queue) {
+        try {
+          await uploadToServer(item);
+
+          if (item.imageFiles && item.imageFiles.length > 0) {
+            for (const fileName of item.imageFiles) {
+              try {
+                await ImageService.deleteImage(fileName);
+              } catch (imgError) {}
+            }
+          }
+
+          const currentQueue: PendingItem[] = await storage.get('offline_api_queue') || [];
+          const updatedQueue = currentQueue.filter(q => q.id !== item.id);
+          await storage.set('offline_api_queue', updatedQueue);
+          pendingItems.value = updatedQueue;
+
+        } catch (error) {
+          console.error(`Đồng bộ thất bại cho item ${item.id}:`, error);
+          break; 
+        }
+      }
+    } catch (e) {
+      console.error("Lỗi tổng quát trong tiến trình đồng bộ:", e);
+    } finally {
+      isSyncing.value = false; 
+      await loadPendingItems(); 
     }
-    // Cập nhật lại UI sau khi đồng bộ
-    await loadPendingItems();
   };
 
-  // --- 5. Giả lập hàm Upload (Thay bằng logic thực tế của bạn) ---
   const uploadToServer = async (item: PendingItem): Promise<any> => {
-    console.log("Đang tải dữ liệu lên server...", item);
-    // Ví dụ thực tế: 
-    // return axios.post(item.url, { ...item.data, images: item.imageFiles });
-    return new Promise((resolve) => setTimeout(resolve, 2000)); 
+    console.log(item.data);
+    return await PointReport.createPointReport(item.data);
   };
-
-  onMounted(() => {
-    initializeNetwork();
-    loadPendingItems();
-  });
 
   return { 
-    isOnline, 
+    // Trả về biến isOnline lấy từ Vuex để giao diện (nếu cần) xài chung luôn
+    isOnline: computed(() => store.state.isOnline), 
     pendingItems, 
     sendData, 
     loadPendingItems, 

@@ -1,5 +1,6 @@
 import { CapacitorHttp, HttpResponse, HttpOptions } from '@capacitor/core';
 import baseURLMixin from '@/mixins/baseURLMixin';
+import storageService from '@/services/storage.service';
 
 const baseURL: string = baseURLMixin.url;
 
@@ -11,11 +12,15 @@ const request = {
    * Hàm xử lý chung sử dụng CapacitorHttp.request
    */
   async send(method: HttpMethod, url: string, data: any = null): Promise<HttpResponse> {
+    // LẤY TOKEN TỪ SQLITE/STORAGE TRƯỚC KHI GỬI
+    const token = await storageService.get('user_token');
+
     const options: HttpOptions = {
       url: `${baseURL}${url}`,
       method: method,
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': token ? `Bearer ${token}` : '',
         // 'Connection': 'close' // Thường không cần thiết với CapacitorHttp trừ khi debug đặc biệt
       },
       data: data,
@@ -35,12 +40,16 @@ const request = {
       const response = await CapacitorHttp.request(options);
       
       // CapacitorHttp không throw error khi status code >= 400 (giống fetch)
-      // nên ta cần chủ động check status
-      if (response.status >= 400) {
-          console.error(`[API Error ${response.status}] ${method} ${url}`, response.data);
-          throw response;
+      // Xử lý lỗi 401 (Token hết hạn)
+      if (response.status === 401) {
+          console.warn("Token hết hạn, đang đăng xuất...");
+          await storageService.clear();
+          window.location.href = '/login'; 
       }
 
+      if (response.status >= 400) {
+          throw response;
+      }
       return response;
     } catch (error) {
       console.error(`[Network/SSL Error] ${method} ${url}:`, error);

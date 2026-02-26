@@ -2,43 +2,73 @@
   <ion-page>
     <ion-header>
       <ion-toolbar>
-        <ion-title>{{ getPrIdData.cpCode }}.Detail #{{ getPrIdData.prId }}</ion-title>
+        <ion-buttons slot="start">
+          <ion-back-button default-href="/checkpoint"></ion-back-button>
+        </ion-buttons>
+        <ion-title>
+          {{ getPrIdData?.cpCode || 'Chi tiết' }} #{{ getPrIdData?.prId || '' }}
+        </ion-title>
       </ion-toolbar>
     </ion-header>
 
     <ion-content>
-      <ion-card>
-        <ion-grid>
+      <div v-if="!getPrIdData" class="ion-padding ion-text-center">
+        <ion-spinner name="crescent"></ion-spinner>
+        <p>Đang tải chi tiết...</p>
+      </div>
+
+      <ion-card v-else>
+        <ion-grid class="image-grid" v-if="listImages.length > 0">
           <ion-row>
             <ion-col 
-              :size="listImages.length === 1 ? '12' : listImages.length === 2 ? '6' : '4'" 
-              size-md="2" 
-              size-lg="2" 
-              v-for="(img) in listImages" :key="img.url">
-              <div class="thumbnail-wrapper" @click="openModal(img)" id="open-custom-dialog" expand="block">
-                <ion-img :src="img.url" alt="picBase64"></ion-img>
+              v-for="(img, index) in listImages" 
+              :key="index"
+              size="4" 
+              size-md="2">
+              <div class="thumbnail-wrapper" @click="openModal(img)">
+                <ion-img :src="img.url" class="thumb-img"></ion-img>
               </div>
             </ion-col>
           </ion-row>
         </ion-grid>
 
-        <ion-modal :is-open="isModalOpen" @didDismiss="closeModal" id="example-modal" ref="modal" trigger="open-custom-dialog">
-          <div class="wrapper" v-if="selectedImage" insert>
+        <ion-modal :is-open="isModalOpen" @didDismiss="closeModal" class="image-modal">
+          <div class="modal-wrapper" v-if="selectedImage" @click="closeModal">
             <ion-img :src="selectedImage.url"></ion-img>
           </div>
         </ion-modal>
 
         <ion-card-header>
-          <ion-card-title>Area: {{ getPrIdData.areaName }}</ion-card-title>
-          <ion-card-subtitle>Check Point: {{ getPrIdData.cpName }}</ion-card-subtitle>
-          <ion-card-subtitle>User Name: {{ getPrIdData.createdName }}</ion-card-subtitle>
-          <ion-card-subtitle>Date: {{ getPrIdData.createdAt }}</ion-card-subtitle>
+          <div class="status-badge" :class="getPrIdData.prHasProblem ? 'problem' : 'normal'">
+            {{ getPrIdData.prHasProblem ? 'Có vấn đề' : 'Bình thường' }}
+          </div>
+          <ion-card-title>Khu vực: {{ getPrIdData.areaName }}</ion-card-title>
+          <ion-card-subtitle>Vị trí: {{ getPrIdData.cpName }}</ion-card-subtitle>
         </ion-card-header>
 
         <ion-card-content>
-          <ion-label>Note:</ion-label>
-          <br>
-          {{ getPrIdData.prNote }}
+          <ion-list lines="none">
+            <ion-item>
+              <ion-label>
+                <h2>{{ getPrIdData.createdName }}</h2>
+              </ion-label>
+              <ion-label>
+                <h3>{{ formatDate(getPrIdData.createdAt) }}</h3>
+              </ion-label>
+            </ion-item>
+            <ion-item class="note-item">
+              <ion-label>
+                <h3>Ghi chú</h3>
+                <div class="note-content">{{ getPrIdData.prNote || 'Không có ghi chú' }}</div>
+              </ion-label>
+            </ion-item>
+            <ion-item v-if="getPrIdData.cpDescription">
+              <ion-label>
+                <h3>Mô tả Checkpoint</h3>
+                <p class="description-text">{{ getPrIdData.cpDescription }}</p>
+              </ion-label>
+            </ion-item>
+          </ion-list>
         </ion-card-content>
       </ion-card>
     </ion-content>
@@ -47,119 +77,148 @@
 
 <script setup lang="ts">
 import {
-    IonHeader,
-    IonToolbar,
-    IonTitle,
-    IonCard,
-    IonCardHeader,
-    IonCardTitle,
-    IonCardSubtitle,
-    IonCardContent,
-    IonCol, 
-    IonGrid, 
-    IonRow,
-    IonPage,
-    IonContent,
-    IonLabel,
-    IonImg,
-    IonModal,
+    IonHeader, IonToolbar, IonTitle, IonCard, IonCardHeader, IonCardTitle,
+    IonCardSubtitle, IonCardContent, IonCol, IonGrid, IonRow, IonPage,
+    IonContent, IonLabel, IonImg, IonModal, IonButtons, IonBackButton,
+    IonSpinner, IonList, IonItem
 } from '@ionic/vue'
-import { ref } from 'vue';
-import { useRoute } from 'vue-router';
+import { ref, computed } from 'vue';
 import { useStore } from 'vuex';
 
-interface ImageItem {
-  url: string;
-  title?: string;
-  description?: string;
-}
+const store = useStore();
 
-interface CheckPointItem {
-  prId: number;
-  cpCode: string;
-  reportImages: Array<{ priImage: string }>;
-  [key: string]: any;
-}
+// State cho Modal ảnh
+const isModalOpen = ref(false);
+const selectedImage = ref<{url: string} | null>(null);
 
-// Get Data RP ******
-const store = useStore()
-const route = useRoute();
-const dataStoreRP = store.state.dataListCP
-console.log(dataStoreRP);
+/**
+ * Lấy data từ Store dựa trên ID từ URL
+ * Sử dụng computed để tự động cập nhật nếu Store thay đổi
+ */
+const getPrIdData = computed(() => {
+  const dataStoreRP = store.state.currentCheckpoint;
+  console.log(dataStoreRP);
+  
+  return dataStoreRP.data;
+});
 
-const getPrIdData = dataStoreRP[0].find((item: CheckPointItem) => item.prId === Number(route.params.id))
-//*********>
-
-// Show Images ******
-// Khai báo biến reactive để chứa chuỗi ảnh
-const listImages = ref<ImageItem[]>([])
-
-const loadImage = () => {
-  // Giả sử đây là chuỗi base64 nhận được từ API (thường API trả về chuỗi thô)
-  // const rawBase64 = '';
-  for (const item of getPrIdData.reportImages) {
-    listImages.value.push({ url: `data:image/png;base64,${item.priImage}` })
+/**
+ * Tự động chuyển đổi reportImages sang định dạng Base64 để hiển thị
+ */
+const listImages = computed(() => {
+  const data = getPrIdData.value;
+  if (data && data.reportImages && Array.isArray(data.reportImages)) {
+    return data.reportImages.map((item: any) => ({
+      // Kiểm tra nếu chuỗi đã có prefix data:image thì giữ nguyên, ngược lại thì thêm vào
+      url: item.priImage?.startsWith('data:image') 
+           ? item.priImage 
+           : `data:image/jpeg;base64,${item.priImage}`
+    }));
   }
-  // QUAN TRỌNG: Phải ghép thêm header nếu chuỗi chưa có
-  // Lưu ý loại ảnh: image/png hoặc image/jpeg tùy vào ảnh gốc của bạn
+  return [];
+});
+
+const formatDate = (dateStr: string) => {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  return date.toLocaleString('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
 };
 
-loadImage()
-//**********>
-
-const isModalOpen = ref(false);
-const selectedImage = ref<ImageItem | null>(null);
-
-const openModal = (img: ImageItem) => {
-  selectedImage.value = img; // Lưu hình được chọn vào biến
-  isModalOpen.value = true;  // Mở modal
+const openModal = (img: {url: string}) => {
+  selectedImage.value = img;
+  isModalOpen.value = true;
 };
 
 const closeModal = () => {
   isModalOpen.value = false;
-  // Reset lại selectedImage sau khi animation đóng kết thúc (tùy chọn)
-  setTimeout(() => {
-    selectedImage.value = null;
-  }, 200);
 };
 </script>
 
 <style scoped>
-ion-col {
-  background-color: #bff1d8;
-  border: solid 1px #fff;
-  color: black;
-  text-align: center;
-  align-items: center;
-  justify-content: center;
-}
-
-ion-checkbox {
-  --size: 32px;
-  --checkbox-background-checked: #6815ec;
-}
-
-ion-checkbox::part(container) {
-  border-radius: 6px;
-  border: 2px solid #6815ec;
+.image-grid {
+  padding: 10px;
 }
 
 .thumbnail-wrapper {
+  aspect-ratio: 1/1;
   border-radius: 8px;
   overflow: hidden;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-  cursor: pointer;
+  border: 1px solid #e0e0e0;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
 }
 
-ion-modal#example-modal {
-  --width: fit-content;
-  --min-width: 250px;
-  --height: fit-content;
-  --border-radius: 6px;
-  --box-shadow: 0 28px 48px rgba(0, 0, 0, 0.4);
+.thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
-ion-modal#example-modal .wrapper {
-  margin-bottom: 1px;
+.status-badge {
+  width: fit-content;
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 16px;
+  font-size: 12px;
+  font-weight: bold;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+}
+
+.status-badge.normal {
+  background: #d4fcc7;
+  color: #1e4620;
+}
+
+.status-badge.problem {
+  background: #ffdada;
+  color: #7a1b1b;
+}
+
+.note-content {
+  background: #f4f5f8;
+  padding: 12px;
+  border-radius: 8px;
+  margin-top: 8px;
+  color: #444;
+  font-style: italic;
+  white-space: pre-wrap;
+}
+
+.description-text {
+  color: #666;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.image-modal {
+  --width: 100%;
+  --height: 100%;
+  --background: rgba(0, 0, 0, 0.9);
+}
+
+.modal-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 20px;
+}
+
+.modal-wrapper ion-img {
+  max-width: 100%;
+  max-height: 90vh;
+}
+
+h3 {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #888;
+  margin-bottom: 4px;
 }
 </style>

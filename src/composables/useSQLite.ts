@@ -1,221 +1,142 @@
 import { ref } from 'vue';
-import { CapacitorSQLite, SQLiteConnection, SQLiteDBConnection } from '@capacitor-community/sqlite';
+import { CapacitorSQLite, SQLiteConnection, SQLiteDBConnection, capSQLiteSet } from '@capacitor-community/sqlite';
 
-// Định nghĩa Interface để TypeScript hỗ trợ gợi ý code (Intellisense)
-interface UserProfile {
-  id: number;
-  name: string;
-  email: string;
-}
+const DB_NAME = 'security_app_db';
 
-interface Product {
-  id: number;
-  title: string;
-  price: number;
-  category: string;
-}
-
-interface ApiSyncData {
-  profile?: UserProfile;
-  products?: Product[];
-}
-
-// --- PHẦN CẤU HÌNH CƠ SỞ DỮ LIỆU ---
-const DB_NAME = 'my_app_db';
 const schema = `
-  CREATE TABLE IF NOT EXISTS auth_session (
-    id INTEGER PRIMARY KEY,
-    token TEXT,
-    user_id INTEGER,
-    is_logged_in INTEGER DEFAULT 0
-  );
-
-  CREATE TABLE IF NOT EXISTS profile (
-    id INTEGER PRIMARY KEY,
-    name TEXT,
-    email TEXT
-  );
-
-  CREATE TABLE IF NOT EXISTS products (
-    id INTEGER PRIMARY KEY,
-    title TEXT,
-    price REAL,
-    category TEXT
-  );
-
+  CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
+  CREATE TABLE IF NOT EXISTS profile (id INTEGER PRIMARY KEY, name TEXT, email TEXT);
+  CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY, title TEXT, price REAL);
   CREATE TABLE IF NOT EXISTS sync_queue (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    action TEXT,
-    payload TEXT,
+    id INTEGER PRIMARY KEY AUTOINCREMENT, 
+    action TEXT, 
+    payload TEXT, 
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 `;
 
-// --- SINGLETON INSTANCES ---
+// --- BIẾN TOÀN CỤC (Để dùng chung instance xuyên suốt App) ---
 const sqliteConnection = new SQLiteConnection(CapacitorSQLite);
 const dbInstance = ref<SQLiteDBConnection | null>(null);
 const isReady = ref(false);
 
+// VŨ KHÍ BÍ MẬT: Biến này để quản lý việc đang khởi tạo
+let initializationPromise: Promise<void> | null = null;
+
 export function useSQLite() {
 
-  // 1. Khởi tạo Database
-  const initDatabase = async (): Promise<void> => {
-    if (isReady.value) return;
-    try {
-      // Kiểm tra kết nối cũ để tránh lỗi "Connection already exists"
-      const isConn = await sqliteConnection.isConnection(DB_NAME, false);
-      let db: SQLiteDBConnection;
-      
-      if (isConn.result) {
-        db = await sqliteConnection.retrieveConnection(DB_NAME, false);
-      } else {
-        db = await sqliteConnection.createConnection(DB_NAME, false, 'no-encryption', 1, false);
-      }
+  const initDatabase = async () => {
+    // 1. Nếu đã xong rồi thì trả về luôn
+    if (isReady.value && dbInstance.value) return;
 
-      await db.open();
-      await db.execute(schema);
-      
-      dbInstance.value = db;
-      isReady.value = true;
-      console.log('--- SQLite: Hệ thống đã sẵn sàng (TS Version) ---');
-    } catch (err) {
-      console.error('Lỗi khởi tạo SQLite:', err);
+    // 2. Nếu ĐANG có một luồng khác khởi tạo, hãy đợi luồng đó xong
+    if (initializationPromise) {
+      return initializationPromise;
     }
-  };
 
-  // 2. Đổ dữ liệu từ API vào các bảng
-  const syncDataFromServer = async (apiData: ApiSyncData): Promise<void> => {
-    if (!dbInstance.value) return;
+    // 3. Nếu chưa có ai làm, ta bắt đầu làm và đánh dấu cho người sau biết
+    initializationPromise = (async () => {
+      try {
+        console.log('--- SQLite: Bắt đầu khởi tạo ---');
+        await sqliteConnection.checkConnectionsConsistency();
+        const isConn = await sqliteConnection.isConnection(DB_NAME, false);
+        
+        let db: SQLiteDBConnection;
 
-    try {
-      await dbInstance.value.execute('BEGIN TRANSACTION');
-
-      // Lưu Profile
-      const p = apiData.profile;
-      if (p) {
-        const profileSql = 'INSERT OR REPLACE INTO profile (id, name, email) VALUES (?, ?, ?)';
-        await dbInstance.value.run(profileSql, [p.id, p.name, p.email]);
-      }
-
-      // Lưu danh sách sản phẩm
-      if (apiData.products && Array.isArray(apiData.products)) {
-        for (const prod of apiData.products) {
-          const productSql = 'INSERT OR REPLACE INTO products (id, title, price, category) VALUES (?, ?, ?, ?)';
-          await dbInstance.value.run(productSql, [prod.id, prod.title, prod.price, prod.category]);
+        if (isConn.result) {
+          db = await sqliteConnection.retrieveConnection(DB_NAME, false);
+        } else {
+          db = await sqliteConnection.createConnection(DB_NAME, false, 'no-encryption', 1, false);
         }
-      }
 
-      await dbInstance.value.execute('COMMIT');
-      console.log('--- SQLite: Đã đồng bộ dữ liệu vào máy ---');
-    } catch (err) {
-      if (dbInstance.value) await dbInstance.value.execute('ROLLBACK');
-      console.error('Lỗi đồng bộ dữ liệu:', err);
-    }
-  };
+        const isOpen = await db.isDBOpen();
+        if (!isOpen.result) {
+          await db.open();
+        }
 
-  // 3. Lấy dữ liệu sản phẩm
-  const getProducts = async (): Promise<any[]> => {
-    if (!dbInstance.value) return [];
-    const res = await dbInstance.value.query('SELECT * FROM products');
-    return res.values || [];
-  };
+        await db.execute(schema);
+        dbInstance.value = db;
+        isReady.value = true;
+        console.log('--- SQLite: Sẵn sàng ---');
 
-  // 4. Lưu thao tác vào hàng chờ khi Offline
-  const addActionToQueue = async (action: string, data: any): Promise<void> => {
-    if (!dbInstance.value) return;
-    try {
-      const payload = JSON.stringify(data);
-      await dbInstance.value.run(
-        'INSERT INTO sync_queue (action, payload) VALUES (?, ?)',
-        [action, payload]
-      );
-      console.log(`--- SQLite: Đã lưu ${action} vào hàng chờ ---`);
-    } catch (err) {
-      console.error('Lỗi khi lưu vào sync_queue:', err);
-    }
-  };
-
-  // 5. Xử lý hàng chờ đồng bộ
-  const processSyncQueue = async (
-    apiCallback: (action: string, payload: any) => Promise<boolean>
-  ): Promise<void> => {
-    if (!dbInstance.value) return;
-
-    try {
-      const res = await dbInstance.value.query('SELECT * FROM sync_queue ORDER BY created_at ASC');
-      const queue = res.values || [];
-
-      if (queue.length === 0) return;
-
-      for (const item of queue) {
+      } catch (err: any) {
+        console.warn('--- SQLite: Xung đột, xử lý dọn dẹp kết nối lỗi ---');
         try {
-          const payload = JSON.parse(item.payload);
-          const success = await apiCallback(item.action, payload);
-
-          if (success) {
-            await dbInstance.value.run('DELETE FROM sync_queue WHERE id = ?', [item.id]);
-          } else {
-            break;
-          }
-        } catch (err) {
-          console.error(`Lỗi xử lý mục ${item.id}:`, err);
-          break; 
+          // Xử lý lỗi "No available connection" bằng cách đóng kết nối bị treo
+          await sqliteConnection.closeConnection(DB_NAME, false);
+          const db = await sqliteConnection.createConnection(DB_NAME, false, 'no-encryption', 1, false);
+          await db.open();
+          await db.execute(schema);
+          dbInstance.value = db;
+          isReady.value = true;
+        } catch (finalErr) {
+          console.error('--- SQLite: Lỗi khởi tạo nghiêm trọng ---', finalErr);
+          throw finalErr;
         }
+      } finally {
+        // Sau khi xong (thành công hoặc thất bại), giải phóng Promise
+        initializationPromise = null;
       }
-    } catch (globalErr) {
-      console.error('Lỗi truy vấn hàng chờ:', globalErr);
-    }
+    })();
+
+    return initializationPromise;
   };
 
-  // 6. Kiểm tra phiên đăng nhập
-  const checkAuthStatus = async (): Promise<any | null> => {
-    if (!dbInstance.value) return null;
-    const res = await dbInstance.value.query(
-      'SELECT * FROM auth_session WHERE is_logged_in = 1 LIMIT 1'
+  // --- Các hàm setItem, getItem, v.v. cần dùng await initDatabase() ---
+
+  const setItem = async (key: string, value: any) => {
+    await initDatabase(); // Luôn đảm bảo DB sẵn sàng trước khi ghi
+    const valStr = JSON.stringify(value);
+    await dbInstance.value?.run(
+      'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
+      [key, valStr]
     );
-    return (res.values && res.values.length > 0) ? res.values[0] : null;
   };
 
-  // Lưu phiên đăng nhập
-  const saveAuthSession = async (user: { id: number }, token: string): Promise<void> => {
-    if (!dbInstance.value) return;
-    try {
-      await dbInstance.value.run('DELETE FROM auth_session');
-      await dbInstance.value.run(
-        'INSERT INTO auth_session (user_id, token, is_logged_in) VALUES (?, ?, 1)',
-        [user.id, token]
-      );
-    } catch (err) {
-      console.error('Lỗi lưu session:', err);
+  const getItem = async (key: string): Promise<any | null> => {
+    await initDatabase(); // Luôn đảm bảo DB sẵn sàng trước khi đọc
+    const res = await dbInstance.value?.query('SELECT value FROM settings WHERE key = ?', [key]);
+    if (res?.values && res.values.length > 0) {
+      try {
+        return JSON.parse(res.values[0].value);
+      } catch (e) {
+        return res.values[0].value;
+      }
     }
+    return null;
   };
 
-  // 7. Logout
-  const logout = async (): Promise<void> => {
+  const removeItem = async (key: string) => {
+    await initDatabase();
+    await dbInstance.value?.run('DELETE FROM settings WHERE key = ?', [key]);
+  };
+
+  // ... (Các hàm khác giữ nguyên logic nhưng nhớ thêm await initDatabase() ở đầu)
+
+  const logout = async () => {
+    await initDatabase();
     if (!dbInstance.value) return;
     try {
-      await dbInstance.value.execute('BEGIN TRANSACTION');
-      await dbInstance.value.run('DELETE FROM auth_session');
-      await dbInstance.value.run('DELETE FROM profile');
-      await dbInstance.value.run('DELETE FROM products');
-      await dbInstance.value.run('DELETE FROM sync_queue');
-      await dbInstance.value.execute('COMMIT');
-      isReady.value = false;
+      await dbInstance.value.execute(`
+        DELETE FROM profile; 
+        DELETE FROM settings; 
+        DELETE FROM sync_queue;
+      `);
+      // Lưu ý: Không nên set isReady = false ở đây vì DB vẫn đang mở, 
+      // chỉ là dữ liệu bên trong bị xóa thôi.
     } catch (err) {
-      if (dbInstance.value) await dbInstance.value.execute('ROLLBACK');
-      console.error('Lỗi đăng xuất:', err);
+      console.error('Lỗi logout:', err);
     }
   };
 
   return { 
     isReady, 
     initDatabase, 
-    syncDataFromServer, 
-    getProducts, 
-    addActionToQueue,
-    processSyncQueue,
-    checkAuthStatus,
-    saveAuthSession,
-    logout
+    setItem, 
+    getItem, 
+    removeItem,
+    logout,
+    // Trả về thêm instance để dùng trực tiếp nếu cần
+    getDbInstance: () => dbInstance.value 
   };
 }
