@@ -40,6 +40,12 @@
               <ion-text color="danger" style="margin-left: 1px;">Patrol</ion-text>
             </strong>
           </ion-button>
+          <div slot="end" v-if="isSyncing" class="sync-container pulse-animation">
+            <ion-spinner name="crescent" color="primary" class="small-spinner"></ion-spinner>
+            <ion-text color="primary" class="sync-text">
+              Đang gửi ({{ pendingItems.length }})
+            </ion-text>
+          </div>
           <ion-badge slot="end" :color="isOnline ? 'success' : 'danger'" class="ion-margin-end">
             {{ isOnline ? 'Online' : 'Offline' }}
           </ion-badge>
@@ -52,7 +58,7 @@
         <ion-router-outlet></ion-router-outlet>
       </ion-content>
 
-      <ion-footer>
+      <!-- <ion-footer>
         <ion-toolbar>
           <ion-grid>
             <ion-row class="ion-justify-content-center">
@@ -64,7 +70,7 @@
             </ion-row>
           </ion-grid>
         </ion-toolbar>
-      </ion-footer>
+      </ion-footer> -->
     </div>
   </ion-page>
 </template>
@@ -77,7 +83,7 @@ import {
   alertController, IonGrid, IonRow, IonCol, IonBadge, IonTitle, useIonRouter,
   loadingController, IonText
 } from '@ionic/vue';
-import { reactive, ref, computed } from 'vue';
+import { reactive, ref, computed, watch } from 'vue';
 import { qrCodeOutline, exitOutline } from 'ionicons/icons';
 import { BarcodeScanner } from '@capacitor-mlkit/barcode-scanning';
 import PointReport from '@/api/PointReport';
@@ -90,11 +96,8 @@ import { useOfflineManager } from '@/composables/useOfflineManager';
 
 const { logout } = useSQLite();
 const store = useStore();
-const isOnline = computed(() => store.state.isOnline);
-const isLoading = ref(false);
-const listScanQr = reactive({ cpwId: '', cpwCode: '' });
-
-import { watch } from 'vue';
+// const isLoading = ref(false);
+// const listScanQr = reactive({ cpwId: '', cpwCode: '' });
 
 // // 1. Lấy dữ liệu an toàn cho Menu
 // const datalistNav = computed(() => {
@@ -115,22 +118,22 @@ import { watch } from 'vue';
 //   return result;
 // });
 
-watch(() => store.state.dataAreaBU, async (newData) => {
-  const actualData = Array.isArray(newData) ? newData : (newData?.data || []);
+// watch(() => store.state.dataAreaBU, async (newData) => {
+//   const actualData = Array.isArray(newData) ? newData : (newData?.data || []);
 
-  if (actualData && actualData.length > 0) {
-    const storagePromises = [];
-    for (const area of actualData) {
-      if (area.checkPoints) {
-        for (const cp of area.checkPoints) {
-          // Chỉ lưu checkpoint cho tính năng Quét QR
-          storagePromises.push(storageService.set(`checkpoint_${cp.cpId}`, { data: cp }));
-        }
-      }
-    }
-    await Promise.all(storagePromises);
-  }
-}, { immediate: true });
+//   if (actualData && actualData.length > 0) {
+//     const storagePromises = [];
+//     for (const area of actualData) {
+//       if (area.checkPoints) {
+//         for (const cp of area.checkPoints) {
+//           // Chỉ lưu checkpoint cho tính năng Quét QR
+//           storagePromises.push(storageService.set(`checkpoint_${cp.cpId}`, { data: cp }));
+//         }
+//       }
+//     }
+//     await Promise.all(storagePromises);
+//   }
+// }, { immediate: true });
 
 ///////////////////////////////
 // Khởi tạo router riêng của Ionic
@@ -141,97 +144,97 @@ const goBackAndClearHistory = () => {
 //////////////////////////////
 
 // 1. Quét mã QR - flow Offline-first
-const startScanning = async () => {
-  const now = new Date();
-  const currentTimeString = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().slice(0, 19);
+// const startScanning = async () => {
+//   const now = new Date();
+//   const currentTimeString = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().slice(0, 19);
 
-  const granted = await requestPermissions();
-  if (!granted) return;
+//   const granted = await requestPermissions();
+//   if (!granted) return;
 
-  const { barcodes } = await BarcodeScanner.scan();
-  if (!barcodes || barcodes.length === 0) return;
+//   const { barcodes } = await BarcodeScanner.scan();
+//   if (!barcodes || barcodes.length === 0) return;
 
-  const urlString = barcodes[0].rawValue;
-  if (urlString) {
-    try {
-      const url = new URL(urlString);
-      const segments = url.pathname.split('/');
-      listScanQr.cpwId = segments[3];
-      listScanQr.cpwCode = segments[4];
-    } catch (e) {
-      presentAlert('Lỗi', 'Mã QR không hợp lệ');
-      return;
-    }
-  }
+//   const urlString = barcodes[0].rawValue;
+//   if (urlString) {
+//     try {
+//       const url = new URL(urlString);
+//       const segments = url.pathname.split('/');
+//       listScanQr.cpwId = segments[3];
+//       listScanQr.cpwCode = segments[4];
+//     } catch (e) {
+//       presentAlert('Lỗi', 'Mã QR không hợp lệ');
+//       return;
+//     }
+//   }
 
-  isLoading.value = true;
-  try {
-    // Biến này bây giờ sẽ CHỈ CHỨA CÁI LÕI (Object chứa cpName, areaName...)
-    let finalData = null;
+//   isLoading.value = true;
+//   try {
+//     // Biến này bây giờ sẽ CHỈ CHỨA CÁI LÕI (Object chứa cpName, areaName...)
+//     let finalData = null;
 
-    // BƯỚC 1: NẾU ONLINE -> Lấy từ API và bóc tách lấy cái lõi
-    if (isOnline.value) {
-      try {
-        const res = await CheckPointScanQr.getCheckPointScanQr(listScanQr);
+//     // BƯỚC 1: NẾU ONLINE -> Lấy từ API và bóc tách lấy cái lõi
+//     if (isOnline.value) {
+//       try {
+//         const res = await CheckPointScanQr.getCheckPointScanQr(listScanQr);
 
-        let actualData = res?.data?.data || res?.data;
-        if (Array.isArray(actualData)) {
-          actualData = actualData[0];
-        }
+//         let actualData = res?.data?.data || res?.data;
+//         if (Array.isArray(actualData)) {
+//           actualData = actualData[0];
+//         }
 
-        if (actualData) {
-          finalData = actualData; // 🚀 Gán thẳng cái lõi, không bọc gì thêm!
-          await storageService.set(`checkpoint_${listScanQr.cpwId}`, actualData);
-        }
-      } catch (e) {
-        console.warn("API lỗi, hệ thống tự chuyển sang lấy dữ liệu trong máy.");
-      }
-    }
+//         if (actualData) {
+//           finalData = actualData; // 🚀 Gán thẳng cái lõi, không bọc gì thêm!
+//           await storageService.set(`checkpoint_${listScanQr.cpwId}`, actualData);
+//         }
+//       } catch (e) {
+//         console.warn("API lỗi, hệ thống tự chuyển sang lấy dữ liệu trong máy.");
+//       }
+//     }
 
-    // BƯỚC 2: NẾU OFFLINE -> Tìm trong máy
-    if (!finalData) {
-      console.log('🔌 Trạng thái OFFLINE: Đang tìm Checkpoint trong kho tổng...');
+//     // BƯỚC 2: NẾU OFFLINE -> Tìm trong máy
+//     if (!finalData) {
+//       console.log('🔌 Trạng thái OFFLINE: Đang tìm Checkpoint trong kho tổng...');
 
-      let response = await storageService.get('checkpoints');
-      let allCheckpoints = [];
+//       let response = await storageService.get('checkpoints');
+//       let allCheckpoints = [];
 
-      if (Array.isArray(response)) {
-        allCheckpoints = response;
-      } else if (response && Array.isArray(response.data)) {
-        allCheckpoints = response.data;
-      }
+//       if (Array.isArray(response)) {
+//         allCheckpoints = response;
+//       } else if (response && Array.isArray(response.data)) {
+//         allCheckpoints = response.data;
+//       }
 
-      const foundItem = allCheckpoints.find(
-        (item: any) => String(item.cpId) === String(listScanQr.cpwId)
-      );
+//       const foundItem = allCheckpoints.find(
+//         (item: any) => String(item.cpId) === String(listScanQr.cpwId)
+//       );
 
-      if (foundItem) {
-        finalData = foundItem; // 🚀 BỎ LUÔN VỤ BỌC { data: foundItem }. Gán thẳng cái lõi!
-        console.log('✅ Đã lấy FULL DATA Offline thành công:', finalData);
-      }
-    }
+//       if (foundItem) {
+//         finalData = foundItem; // 🚀 BỎ LUÔN VỤ BỌC { data: foundItem }. Gán thẳng cái lõi!
+//         console.log('✅ Đã lấy FULL DATA Offline thành công:', finalData);
+//       }
+//     }
 
-    console.log("📦 Dữ liệu sạch sẽ chuẩn bị đưa vào Vuex:", finalData);
+//     console.log("📦 Dữ liệu sạch sẽ chuẩn bị đưa vào Vuex:", finalData);
 
-    // BƯỚC 3: ĐẨY VÀO VUEX & ĐI CHUYỂN TRANG
-    if (finalData) {
-      // 🚀 Không cần hàm if/else check data lằng nhằng nữa, cứ thế mà đẩy vào!
-      store.commit('SET_DATASCANQR', finalData);
+//     // BƯỚC 3: ĐẨY VÀO VUEX & ĐI CHUYỂN TRANG
+//     if (finalData) {
+//       // 🚀 Không cần hàm if/else check data lằng nhằng nữa, cứ thế mà đẩy vào!
+//       store.commit('SET_DATASCANQR', finalData);
 
-      await storageService.set('data_scanqr', finalData);
-      await storageService.set('currentTime_scanqr', currentTimeString);
+//       await storageService.set('data_scanqr', finalData);
+//       await storageService.set('currentTime_scanqr', currentTimeString);
 
-      router.replace('/checkpoint/create');
-    } else {
-      presentAlert('Thông báo', 'Điểm quét này chưa có dữ liệu trên máy. Hãy online một lần để tải danh mục.');
-    }
-  } catch (error) {
-    console.error("Lỗi:", error);
-    presentAlert('Lỗi', 'Có lỗi xảy ra khi xử lý dữ liệu.');
-  } finally {
-    isLoading.value = false;
-  }
-};
+//       router.replace('/checkpoint/create');
+//     } else {
+//       presentAlert('Thông báo', 'Điểm quét này chưa có dữ liệu trên máy. Hãy online một lần để tải danh mục.');
+//     }
+//   } catch (error) {
+//     console.error("Lỗi:", error);
+//     presentAlert('Lỗi', 'Có lỗi xảy ra khi xử lý dữ liệu.');
+//   } finally {
+//     isLoading.value = false;
+//   }
+// };
 
 // 2. HANDLE NAV LINK: Tận dụng RAM tối đa và log chi tiết
 // const handleNavLink = async (id: string) => {
@@ -312,7 +315,7 @@ const startScanning = async () => {
 // };
 
 //////////////////////////////////////////
-const { pendingItems, loadPendingItems } = useOfflineManager();
+const { pendingItems, loadPendingItems, isSyncing, isOnline } = useOfflineManager();
 
 const handleLogout = async () => {
   console.log('Bắt đầu kiểm tra trước khi đăng xuất...');
@@ -355,15 +358,17 @@ const handleLogout = async () => {
 };
 ////////////////////////////////////////////
 
-const requestPermissions = async () => {
-  const { camera } = await BarcodeScanner.requestPermissions();
-  return camera === 'granted' || camera === 'limited';
-};
+// scan
+// const requestPermissions = async () => {
+//   const { camera } = await BarcodeScanner.requestPermissions();
+//   return camera === 'granted' || camera === 'limited';
+// };
 
-const presentAlert = async (h: string, m: string) => {
-  const alert = await alertController.create({ header: h, message: m, buttons: ['OK'] });
-  await alert.present();
-};
+// const presentAlert = async (h: string, m: string) => {
+//   const alert = await alertController.create({ header: h, message: m, buttons: ['OK'] });
+//   await alert.present();
+// };
+//////////////////////////
 </script>
 
 <style>
@@ -398,5 +403,48 @@ div[slot='content'] {
 
 .button_logout {
   font-size: 25px;
+}
+
+.sync-container {
+  display: flex;
+  align-items: center;
+  margin-right: 12px;
+  padding: 4px 8px;
+  background: rgba(var(--ion-color-primary-rgb), 0.1);
+  border-radius: 16px;
+}
+
+.small-spinner {
+  width: 16px;
+  height: 16px;
+  margin-right: 6px;
+}
+
+.sync-text {
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Hiệu ứng nhấp nháy nhẹ nhàng */
+.pulse-animation {
+  animation: pulse-red 2s infinite;
+}
+
+@keyframes pulse-red {
+  0% {
+    transform: scale(0.98);
+    opacity: 0.8;
+  }
+
+  50% {
+    transform: scale(1.02);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(0.98);
+    opacity: 0.8;
+  }
 }
 </style>

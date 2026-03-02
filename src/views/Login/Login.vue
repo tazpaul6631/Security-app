@@ -167,6 +167,7 @@ const handleLogin = async () => {
                 await storageService.set('user_data', savedAccount.profile);
                 await storageService.set('user_token', savedAccount.profile.userPassword);
 
+                await store.dispatch('initApp');
                 // Vào thẳng app
                 router.replace('/home');
             } else {

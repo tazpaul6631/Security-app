@@ -3,7 +3,7 @@
     <ion-header>
       <ion-toolbar>
         <ion-buttons slot="start">
-          <ion-back-button default-href="/home"></ion-back-button>
+          <ion-back-button default-href="/route"></ion-back-button>
         </ion-buttons>
         <ion-title>CheckPoint Create</ion-title>
       </ion-toolbar>
@@ -105,12 +105,24 @@
         </ion-list-header>
 
         <ion-list lines="full">
-          <ion-item-sliding v-for="item in pendingItems" :key="item.id">
+          <ion-item-sliding v-for="item in displayItems" :key="item.id">
             <ion-item>
-              <ion-icon slot="start" :icon="cloudOfflineOutline" color="warning"></ion-icon>
+              <ion-thumbnail slot="start" class="pending-thumb">
+                <img v-if="item.thumb" :src="item.thumb" />
+                <div v-else class="no-image-placeholder">
+                  <ion-icon :icon="cloudOfflineOutline" color="warning"></ion-icon>
+                </div>
+              </ion-thumbnail>
+
               <ion-label>
-                <h2>{{ item.data.note || 'Không có tiêu đề' }}</h2>
-                <p>{{ item.imageFiles?.length }} hình ảnh - {{ formatDate(item.id) }}</p>
+                <h2 class="checkpoint-name">{{ getCheckpointName(item.data?.cpId) }}</h2>
+                <p class="status-info">
+                  <ion-badge color="warning" mode="ios">Chờ đồng bộ</ion-badge>
+                  <span class="image-count">
+                    <ion-icon :icon="images"></ion-icon> {{ item.imageFiles?.length || 0 }} ảnh
+                  </span>
+                </p>
+                <p class="time-stamp">{{ formatDate(item.id) }}</p>
               </ion-label>
             </ion-item>
 
@@ -145,8 +157,20 @@ import { ImageService } from '@/services/image.service';
 import router from '@/router';
 import storageService from '@/services/storage.service';
 
-const store = useStore()
-const isReady = ref(false) // biến để kiểm soát UI
+const store = useStore();
+const isReady = ref(false); // biến để kiểm soát UI
+
+const dataofflineStore = computed(() => store.state.dataCheckpointsId);
+console.log(dataofflineStore);
+// Hàm tìm tên checkpoint dựa trên cpId
+const getCheckpointName = (cpId: string) => {
+  if (!cpId) return 'Không xác định';
+
+  // Tìm trong dataofflineStore (là store.state.dataCheckpointsId)
+  const checkpoint = dataofflineStore.value.find((cp: any) => cp.cpId === cpId);
+
+  return checkpoint ? checkpoint.cpName : 'Checkpoint không tồn tại';
+};
 
 // Bóc tách an toàn dữ liệu Checkpoint quét được từ QR
 const dataScanQr = computed(() => {
@@ -214,7 +238,7 @@ onIonViewWillEnter(() => {
 const showToast = async (message: string, color: string = 'success') => {
   const toast = await toastController.create({
     message: message,
-    duration: 2000,
+    duration: 5000,
     color: color,
     position: 'top',
   });
@@ -260,7 +284,7 @@ interface QueueItem {
 // ==========================================
 // 2. STATE & DỮ LIỆU CỦA MANAGER (Giữ nguyên)
 // ==========================================
-const { sendData, pendingItems, loadPendingItems, syncData } = useOfflineManager();
+const { sendData, pendingItems, loadPendingItems, syncData, isSyncing } = useOfflineManager();
 
 const photos = ref<Photo[]>([]);
 const displayItems = ref<QueueItem[]>([]);
@@ -359,11 +383,6 @@ const handleSubmit = async (): Promise<void> => {
     const actualUser = rawUser?.data ? rawUser.data : rawUser;
     const userId = actualUser?.userId || '';
 
-    if (!userId) {
-      console.warn("Cảnh báo: Không tìm thấy userId khi offline.");
-      // Tùy logic nghiệp vụ, bạn có thể chặn submit hoặc vẫn cho lưu với userId rỗng
-    }
-
     const currentTime_scanQr = await storageService.get('currentTime_scanqr')
 
     const formSubmitData = {
@@ -371,7 +390,7 @@ const handleSubmit = async (): Promise<void> => {
       prHasProblem: formData.prHasProblem,
       prNote: formData.prNote,
       cpId: dataScanQr.value.cpId,
-      createdBy: userId, // Sử dụng userId đã lấy an toàn
+      createdBy: userId,
       scanAt: currentTime_scanQr,
       images: formData.prHasProblem ? mapImages : []
     };
@@ -388,7 +407,8 @@ const handleSubmit = async (): Promise<void> => {
 
     await loadPendingItemsWithImages();
     await loading.dismiss();
-    await showToast('Đã lưu dữ liệu thành công!', 'success');
+
+    if (!isSyncing) await showToast('Đã lưu dữ liệu thành công!', 'success');
 
     router.replace({ path: '/home' })
   } catch (error) {
@@ -482,5 +502,50 @@ ion-list-header {
   z-index: 10;
 }
 
-/* */
+.pending-thumb {
+  --size: 56px;
+  --border-radius: 8px;
+  margin-right: 12px;
+}
+
+.pending-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.no-image-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff4e5;
+  border-radius: 8px;
+}
+
+.checkpoint-name {
+  font-weight: bold;
+  font-size: 1rem;
+  color: #333;
+}
+
+.status-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.image-count {
+  font-size: 0.85rem;
+  color: #666;
+  display: flex;
+  align-items: center;
+}
+
+.time-stamp {
+  font-size: 0.8rem;
+  color: #999;
+}
 </style>

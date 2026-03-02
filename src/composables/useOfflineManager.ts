@@ -4,6 +4,17 @@ import storage from '@/services/storage.service';
 import { ImageService } from '@/services/image.service';
 import PointReport from '@/api/PointReport';
 import store from '@/composables/useVuex'; // 2. Import Vuex Store vào đây
+import { toastController } from '@ionic/vue';
+
+const presentToast = async (message: string) => {
+  const toast = await toastController.create({
+    message: message,
+    duration: 5000,
+    position: 'top',
+    color: 'warning'
+  });
+  await toast.present();
+};
 
 interface PendingItem {
   id: number;
@@ -87,31 +98,36 @@ export function useOfflineManager() {
       reportImages: item.data.images || []
     };
 
+    await presentToast('Đã lưu vào hàng chờ. Sẽ tự động gửi khi có mạng.');
+
     store.commit('ADD_OFFLINE_REPORT', mockReport);
   };
 
   // --- Cơ chế đồng bộ ---
   const syncData = async (): Promise<void> => {
     // 5. CHECK MẠNG TỪ VUEX STORE
-    if (isSyncing.value || !store.state.isOnline) return;
+    if (isSyncing.value || !store.state.isOnline) {
+      console.log("--- Bỏ qua lượt Sync: Hệ thống đang bận hoặc Offline ---");
+      return;
+    }
 
     isSyncing.value = true;
+    console.log("--- BẮT ĐẦU TIẾN TRÌNH ĐỒNG BỘ ---");
 
     try {
       await loadPendingItems();
 
       if (pendingItems.value.length === 0) {
-        isSyncing.value = false;
-        return;
+        return; // Sẽ nhảy xuống finally để reset isSyncing
       }
 
       const queue = [...pendingItems.value];
 
       for (const item of queue) {
+        if (!store.state.isOnline) break;
+
         try {
           await uploadToServer(item);
-
-          store.commit('REMOVE_OFFLINE_REPORT', item.id);
 
           if (item.imageFiles && item.imageFiles.length > 0) {
             for (const fileName of item.imageFiles) {
@@ -120,6 +136,8 @@ export function useOfflineManager() {
               } catch (imgError) { }
             }
           }
+
+          store.commit('REMOVE_OFFLINE_REPORT', item.id);
 
           const currentQueue: PendingItem[] = await storage.get('offline_api_queue') || [];
           const updatedQueue = currentQueue.filter(q => q.id !== item.id);
@@ -180,6 +198,7 @@ export function useOfflineManager() {
   return {
     // Trả về biến isOnline lấy từ Vuex để giao diện (nếu cần) xài chung luôn
     isOnline: computed(() => store.state.isOnline),
+    isSyncing,
     pendingItems,
     sendData,
     loadPendingItems,

@@ -24,35 +24,40 @@ const isAppReady = ref(false);
 let networkHandler: PluginListenerHandle | null = null;
 
 onMounted(async () => {
-  // 1. Cập nhật mạng & Lắng nghe thay đổi
-  const status = await Network.getStatus();
-  store.commit('SET_NETWORK_STATUS', status.connected);
-
-  networkHandler = await Network.addListener('networkStatusChange', status => {
-    store.commit('SET_NETWORK_STATUS', status.connected);
-
-    // NẾU MẠNG QUAY LẠI -> GỌI ĐỒNG BỘ NGAY
-    if (status.connected && store.state.token) {
-      syncData();
-    }
-  });
-
+  // 1. Khởi tạo Database trước tiên
   try {
-    // 2. Chỉ khởi tạo kết nối DB (KHÔNG gọi initApp ở đây nữa)
     await initDatabase();
 
-    // 3. SAU KHI DB SẴN SÀNG -> THỬ ĐỒNG BỘ LẦN ĐẦU (nếu có hàng chờ cũ)
-    if (store.state.token) {
-      await syncData();
-    }
+    // 2. Phục hồi phiên làm việc (Token) từ SQLite lên RAM
+    await store.dispatch('restoreToken');
+    await store.dispatch('restoreUser');
 
-    console.log('--- Hệ thống Database (App.vue) đã thông suốt ---');
+    // 3. Nếu đã login, nạp sẵn dữ liệu nền (Area, Checkpoints...)
+    if (store.state.token) {
+      // Nạp dữ liệu từ máy lên RAM ngay để vào Home là có data luôn
+      await store.dispatch('initApp');
+
+      // Thử đẩy báo cáo kẹt (nếu đang có mạng)
+      const status = await Network.getStatus();
+      if (status.connected) {
+        syncData();
+      }
+    }
   } catch (e) {
-    console.error('Lỗi khởi tạo App.vue:', e);
+    console.error('Lỗi khởi tạo hệ thống:', e);
   } finally {
-    // 4. Mở khóa giao diện
     isAppReady.value = true;
   }
+
+  // 4. Lắng nghe thay đổi mạng
+  networkHandler = await Network.addListener('networkStatusChange', status => {
+    store.commit('SET_NETWORK_STATUS', status.connected);
+    if (status.connected && store.state.token) {
+      setTimeout(() => {
+        syncData();
+      }, 2000);
+    }
+  });
 });
 
 onUnmounted(async () => {

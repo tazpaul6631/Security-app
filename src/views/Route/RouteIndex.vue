@@ -60,6 +60,7 @@
 </template>
 
 <script setup lang="ts">
+import { scannerService } from '@/services/scanner.service';
 import {
     IonPage, IonHeader, IonToolbar, IonTitle, IonIcon, IonButtons, IonBackButton,
     IonCard, IonCardHeader, IonCardTitle, IonCardContent, IonContent, IonBadge,
@@ -67,10 +68,11 @@ import {
 } from '@ionic/vue';
 import { checkmark } from 'ionicons/icons';
 import { computed, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import { useStore } from 'vuex';
 
 const store = useStore();
-
+const router = useRouter();
 interface RouteDetail {
     rdId: number;
     cpId: number;
@@ -107,16 +109,13 @@ const handleRouteSelected = (id: number, name: string) => {
 const alertButtons = [
     {
         text: 'Cancel',
-        role: 'cancel',
-        handler: () => {
-            console.log('Alert canceled');
-        },
+        role: 'cancel'
     },
     {
         text: 'OK',
         role: 'confirm',
         handler: () => {
-            console.log('Alert confirmed');
+            scannerService.startScanning(store, router);
         },
     },
 ];

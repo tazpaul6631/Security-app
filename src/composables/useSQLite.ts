@@ -115,19 +115,26 @@ export function useSQLite() {
     await initDatabase();
     if (!dbInstance.value) return;
     try {
-      // Dùng lệnh DELETE có điều kiện (WHERE) để giữ lại danh bạ offline
-      await dbInstance.value.execute(`
-        DELETE FROM profile; 
-        
-        -- Xóa tất cả trong bảng settings NGOẠI TRỪ danh bạ offline
-        DELETE FROM settings WHERE key NOT IN ('offline_users_dict'); 
-      `);
+      // 1. Xóa thông tin cá nhân trong bảng profile
+      await dbInstance.value.execute(`DELETE FROM profile;`);
 
-      // Lưu ý: Không nên xóa bảng sync_queue ở đây. 
-      // Nhỡ người dùng quét QR lúc offline, chưa kịp có mạng đã bấm Đăng Xuất thì sao? 
-      // Xóa sync_queue là mất luôn báo cáo offline của họ chưa kịp gửi đi.
+      // 2. Chỉ xóa các Key mang tính chất "Phiên làm việc" (Session)
+      // GIỮ LẠI: area_bu, checkpoints, checkpoints_id, list_route, menu_data, offline_users_dict
+      const keysToDelete = [
+        'user_token',
+        'user_data',
+        'data_scanqr',
+        'currentTime_scanqr',
+        'last_selected_checkpoint'
+      ];
 
-      console.log('✅ Đăng xuất an toàn, đã dọn phiên làm việc nhưng giữ lại danh bạ Offline!');
+      const placeholders = keysToDelete.map(() => '?').join(',');
+      await dbInstance.value.run(
+        `DELETE FROM settings WHERE key IN (${placeholders})`,
+        keysToDelete
+      );
+
+      console.log('✅ Đã xóa phiên làm việc cũ. Dữ liệu danh mục vẫn được giữ lại cho người sau.');
     } catch (err) {
       console.error('Lỗi logout:', err);
     }

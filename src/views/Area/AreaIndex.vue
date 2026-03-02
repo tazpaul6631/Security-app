@@ -88,7 +88,7 @@
 
                                     </ion-label>
                                     <ion-note class="labelItem">{{ item.createdAt.replace('T', ' ').slice(0, 16)
-                                    }}</ion-note>
+                                        }}</ion-note>
                                 </ion-col>
                             </ion-row>
                         </ion-grid>
@@ -219,8 +219,6 @@ const datalistNav = computed(() => {
 });
 
 // === 1. COMPUTED: Đọc dữ liệu từ Vuex ===
-const searchQuery = ref('');
-
 const dataPR = computed(() => {
     // BƯỚC CHẶN: Nếu chưa chọn gì ở dropdown, lập tức trả về mảng rỗng
     if (!selectedItem.value) {
@@ -247,6 +245,9 @@ const dataPR = computed(() => {
     };
 });
 
+////////////////////////////////////////////////////
+const searchQuery = ref('');
+
 const filteredDetails = computed(() => {
     if (!searchQuery.value) return dataPR.value.details;
     const query = searchQuery.value.toLowerCase();
@@ -255,6 +256,7 @@ const filteredDetails = computed(() => {
         item.cpName.toLowerCase().includes(query)
     );
 });
+//////////////////////////////////////////////////////
 
 // ==========================================
 // LOGIC INFINITE SCROLL (CUỘN LOAD THÊM)
