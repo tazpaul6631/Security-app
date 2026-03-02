@@ -7,12 +7,9 @@
         </ion-buttons>
         <ion-title>{{ dataPR.cpCode }}</ion-title>
       </ion-toolbar>
-      
+
       <ion-toolbar>
-        <ion-searchbar 
-          :debounce="500"
-          :search-icon="searchCircle" 
-          placeholder="Tìm tên nhân viên hoặc vị trí..."
+        <ion-searchbar :debounce="500" :search-icon="searchCircle" placeholder="Tìm tên nhân viên hoặc vị trí..."
           @ionInput="handleSearch($event)">
         </ion-searchbar>
       </ion-toolbar>
@@ -24,19 +21,13 @@
       </div>
 
       <ion-list v-else>
-        <ion-item 
-          v-for="(item) in filteredDetails" 
-          :button="true" 
-          @click="handleLink(Number(item.prId))" 
-          :key="item.prId"
-          :class="item.prHasProblem ? 'custom-item-false' : 'custom-item-true'">
-          
+        <ion-item v-for="(item) in filteredDetails" :button="true" @click="handleLink(Number(item.prId))"
+          :key="item.prId" :class="item.prHasProblem ? 'custom-item-false' : 'custom-item-true'">
+
           <ion-grid>
             <ion-row class="ion-align-items-center">
               <ion-col size="auto">
-                <ion-icon 
-                  :icon="documentOutline" 
-                  :color="item.prHasProblem ? 'danger' : 'success'">
+                <ion-icon :icon="documentOutline" :color="item.prHasProblem ? 'danger' : 'success'">
                 </ion-icon>
               </ion-col>
               <ion-col>
@@ -67,20 +58,20 @@
 
 <script setup lang="ts">
 import { documentOutline, searchCircle, warningOutline } from "ionicons/icons";
-import { 
-    IonSearchbar, IonInfiniteScroll, IonInfiniteScrollContent, IonList,
-    IonItem, IonLabel, IonHeader, IonToolbar, IonButtons, IonBackButton,
-    IonTitle, IonPage, IonContent, IonGrid, IonRow, IonCol, IonIcon, IonNote,
-    loadingController, alertController, toastController
+import {
+  IonSearchbar, IonInfiniteScroll, IonInfiniteScrollContent, IonList,
+  IonItem, IonLabel, IonHeader, IonToolbar, IonButtons, IonBackButton,
+  IonTitle, IonPage, IonContent, IonGrid, IonRow, IonCol, IonIcon, IonNote,
+  loadingController, alertController, toastController
 } from '@ionic/vue';
 import { ref, computed, watch, onMounted } from 'vue';
 import { useStore } from 'vuex';
-import { useRoute, useRouter } from 'vue-router'; // 🚀 Nhập useRoute
+import { useRoute, useRouter } from 'vue-router'; // Nhập useRoute
 import storageService from "@/services/storage.service";
 import PointReport from "@/api/PointReport";
 
 const store = useStore();
-const route = useRoute(); // 🚀 Dùng để lấy ID từ thanh địa chỉ
+const route = useRoute(); // Dùng để lấy ID từ thanh địa chỉ
 const router = useRouter();
 const searchQuery = ref('');
 const isOnline = computed(() => store.state.isOnline);
@@ -88,21 +79,20 @@ const isOnline = computed(() => store.state.isOnline);
 // === 1. COMPUTED: Đọc dữ liệu từ Vuex (Giữ nguyên cực chuẩn của bạn) ===
 const dataPR = computed(() => {
   const dataStore = store.state.dataListCP;
-  if (!dataStore) return { cpCode: 'Đang tải...', details: [] };
 
   let listDetails = Array.isArray(dataStore) ? (dataStore[0]?.data || dataStore) : (dataStore?.data || []);
-  if (!Array.isArray(listDetails) || listDetails.length === 0) return { cpCode: 'Đang tải...', details: [] };
+  if (!Array.isArray(listDetails) || listDetails.length === 0) return { cpCode: 'Chưa có CheckPoints', details: [] };
 
   return {
     cpCode: listDetails[0]?.cpCode || 'Danh sách báo cáo',
     details: listDetails.map((item: any) => ({
       prId: item.prId,
-      cpName: item.cpName || item.cpCode, 
+      cpName: item.cpName || item.cpCode,
       createdName: item.createdName,
       createdAt: item.createdAt || '',
       prHasProblem: item.prHasProblem,
       prNote: item.prNote,
-      isOfflineMock: item.isOfflineMock || false // 🚀 Thêm dòng này để đọc được cờ
+      isOfflineMock: item.isOfflineMock || false // Thêm dòng này để đọc được cờ
     }))
   };
 });
@@ -110,8 +100,8 @@ const dataPR = computed(() => {
 const filteredDetails = computed(() => {
   if (!searchQuery.value) return dataPR.value.details;
   const query = searchQuery.value.toLowerCase();
-  return dataPR.value.details.filter((item: any) => 
-    item.createdName.toLowerCase().includes(query) || 
+  return dataPR.value.details.filter((item: any) =>
+    item.createdName.toLowerCase().includes(query) ||
     item.cpName.toLowerCase().includes(query)
   );
 });
@@ -121,7 +111,7 @@ const handleSearch = (event: any) => searchQuery.value = event.target.value;
 // === 2. HÀM CỐT LÕI: Tải dữ liệu cho 1 khu vực ===
 const loadCheckpointData = async (id: string, isBackgroundSync = false) => {
   if (!isBackgroundSync) {
-    store.commit('SET_DATACP', []); 
+    store.commit('SET_DATACP', []);
   }
 
   let loading;
@@ -143,9 +133,9 @@ const loadCheckpointData = async (id: string, isBackgroundSync = false) => {
         else if (Array.isArray(responseBU?.data?.data)) actualArray = responseBU.data.data;
 
         if (actualArray.length > 0) {
-           reportData = { data: actualArray };
-           // 🚀 Lưu bản mới nhất vào két sắt SQLite để dành lúc rớt mạng
-           await storageService.set(`report_${id}`, reportData);
+          reportData = { data: actualArray };
+          // Lưu bản mới nhất vào két sắt SQLite để dành lúc rớt mạng
+          await storageService.set(`report_${id}`, reportData);
         }
       } catch (err) { console.warn("Lỗi API, chuyển sang Offline."); }
     }
@@ -164,8 +154,8 @@ const loadCheckpointData = async (id: string, isBackgroundSync = false) => {
       // B. Lấy Báo Cáo Giả (Mock Data) vừa mới tạo đang chờ gửi
       const rawCheckpointsId = store.state.dataCheckpointsId;
       const allReportsInRAM = Array.isArray(rawCheckpointsId) ? rawCheckpointsId : (rawCheckpointsId?.data || []);
-      const mockReports = allReportsInRAM.filter((item: any) => 
-         (String(item.cpId) === String(id)) && item.isOfflineMock
+      const mockReports = allReportsInRAM.filter((item: any) =>
+        (String(item.cpId) === String(id)) && item.isOfflineMock
       );
 
       // C. Gộp 2 mảng lại (Báo cáo giả nằm trên, Báo cáo cũ nằm dưới)
@@ -204,7 +194,7 @@ onMounted(() => {
 watch(() => route.params.id, (newId) => {
   if (newId) {
     // Xóa data cũ cho màn hình nháy nhẹ cái, tạo cảm giác chuyển trang
-    store.commit('SET_DATACP', []); 
+    store.commit('SET_DATACP', []);
     loadCheckpointData(newId as string);
   }
 });
@@ -218,15 +208,15 @@ watch(isOnline, (newStatus, oldStatus) => {
 
 // === 4. CÁC HÀM TIỆN ÍCH ===
 const handleLink = async (prId: number) => {
-    const loading = await loadingController.create({
+  const loading = await loadingController.create({
     message: 'Đang tải chi tiết báo cáo...',
-    spinner: 'crescent', 
-    backdropDismiss: false, 
+    spinner: 'crescent',
+    backdropDismiss: false,
   });
 
   try {
     await loading.present();
-    
+
     let selectedItem = null;
 
     if (isOnline.value) {
@@ -251,7 +241,7 @@ const handleLink = async (prId: number) => {
     if (!selectedItem) {
       const rawCheckpointsId = store.state.dataCheckpointsId;
       const storeData = Array.isArray(rawCheckpointsId) ? rawCheckpointsId : (rawCheckpointsId?.data || []);
-      
+
       const found = storeData.find((item: any) => item.prId === prId);
       if (found) {
         selectedItem = { data: found };
@@ -259,7 +249,7 @@ const handleLink = async (prId: number) => {
     }
 
     if (!selectedItem || !selectedItem.data) {
-      await loading.dismiss(); 
+      await loading.dismiss();
       const alert = await alertController.create({
         header: 'Thông báo',
         message: 'Không tìm thấy dữ liệu báo cáo này trên máy. Vui lòng kiểm tra kết nối mạng.',
@@ -271,7 +261,7 @@ const handleLink = async (prId: number) => {
 
     store.commit('SET_CURRENT_CHECKPOINT', selectedItem);
     await storageService.set('last_selected_checkpoint', selectedItem);
-    
+
     await loading.dismiss();
     router.push({ path: `/checkpoint/detail/${prId}` });
 

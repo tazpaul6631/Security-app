@@ -2,14 +2,21 @@ import { createRouter, createWebHashHistory } from '@ionic/vue-router';
 import { RouteRecordRaw } from 'vue-router';
 import store from '@/composables/useVuex';
 
-// 🚀 THÊM MỚI Ở ĐÂY: Import sẵn toàn bộ các Component (Eager Load) 
+// THÊM MỚI Ở ĐÂY: Import sẵn toàn bộ các Component (Eager Load) 
 // để tránh lỗi "Failed to fetch dynamically imported module" khi test Offline
 import Nav from '@/components/Nav.vue';
 import HomePage from '@/views/HomePage.vue';
-import CPIndex from '@/views/CheckPoint/CPIndex.vue';
-import CPDetail from '@/views/CheckPoint/CPDetail.vue';
-import CPCreate from '@/views/CheckPoint/CPCreate.vue';
+import CPIndex from '@/views/Area/CPIndex.vue';
+import CPDetail from '@/views/Area/AreaDetail.vue';
+import CPCreate from '@/views/Area/AreaCreate.vue';
 import Login from '@/views/Login/Login.vue';
+import AreaBase from '@/views/Area/AreaIndex.vue';
+import UserIndex from '@/views/User/UserIndex.vue';
+import RoleIndex from '@/views/Role/RoleIndex.vue';
+import MenuCategoryIndex from '@/views/MenuCategory/MenuCategoryIndex.vue';
+import ReportIndex from '@/views/Report/ReportIndex.vue';
+import RouteIndex from '@/views/Route/RouteIndex.vue';
+import TutorialIndex from '@/views/Tutorial/TutorialIndex.vue';
 
 const routes: Array<RouteRecordRaw> = [
   {
@@ -19,7 +26,7 @@ const routes: Array<RouteRecordRaw> = [
     meta: { requiresAuth: true },
     // SỬA Ở ĐÂY: Thêm redirect mặc định cho route cha
     // Nếu không có dòng này, khi vào '/' nó chỉ load Nav.vue mà không load ruột (home), dẫn đến màn hình trống
-    redirect: '/home', 
+    redirect: '/home',
     children: [
       {
         path: 'home',
@@ -27,26 +34,68 @@ const routes: Array<RouteRecordRaw> = [
         // CODE CŨ: component: () => import('@/views/HomePage.vue'),
         component: HomePage, // CODE MỚI
       },
-      {
-        path: 'checkpoint/:id',
-        name: 'checkpoint',
-        // CODE CŨ: component: () => import('@/views/CheckPoint/CPIndex.vue'),
-        component: CPIndex, // CODE MỚI
-        props: true,
-      },
+      // {
+      //   path: 'checkpoint/:id',
+      //   name: 'checkpoint',
+      //   // CODE CŨ: component: () => import('@/views/Area/CPIndex.vue'),
+      //   component: CPIndex, // CODE MỚI
+      //   props: true,
+      // },
       {
         path: 'checkpoint/detail/:id',
         name: 'checkpoint-detail',
-        // CODE CŨ: component: () => import('@/views/CheckPoint/CPDetail.vue'),
+        // CODE CŨ: component: () => import('@/views/Area/AreaDetail.vue'),
         component: CPDetail, // CODE MỚI
         props: true,
       },
       {
         path: 'checkpoint/create',
         name: 'checkpoint-create',
-        // CODE CŨ: component: () => import('@/views/CheckPoint/CPCreate.vue'),
+        // CODE CŨ: component: () => import('@/views/Area/AreaCreate.vue'),
         component: CPCreate, // CODE MỚI
         props: true,
+      },
+      {
+        path: 'area',
+        name: 'area',
+        // CODE CŨ: component: () => import('@/views/Area/AreaIndex.vue'),
+        component: AreaBase, // CODE MỚI
+      },
+      {
+        path: 'user',
+        name: 'user',
+        // CODE CŨ: component: () => import('@/views/User/UserIndex.vue'),
+        component: UserIndex, // CODE MỚI
+      },
+      {
+        path: 'role',
+        name: 'role',
+        // CODE CŨ: component: () => import('@/views/Role/RoleIndex.vue'),
+        component: RoleIndex, // CODE MỚI
+      },
+      {
+        path: 'menucategory',
+        name: 'menucategory',
+        // CODE CŨ: component: () => import('@/views/MenuCategory/MenuCategoryIndex.vue'),
+        component: MenuCategoryIndex, // CODE MỚI
+      },
+      {
+        path: 'route',
+        name: 'route',
+        // CODE CŨ: component: () => import('@/views/Route/RouteIndex.vue'),
+        component: RouteIndex, // CODE MỚI
+      },
+      {
+        path: 'report',
+        name: 'report',
+        // CODE CŨ: component: () => import('@/views/Report/ReportIndex.vue'),
+        component: ReportIndex, // CODE MỚI
+      },
+      {
+        path: 'tutorial',
+        name: 'tutorial',
+        // CODE CŨ: component: () => import('@/views/Tutorial/TutorialIndex.vue'),
+        component: TutorialIndex, // CODE MỚI
       },
     ]
   },

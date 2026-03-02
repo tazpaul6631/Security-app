@@ -1,18 +1,18 @@
 import { ref, computed } from 'vue';
-// 🚀 1. Bỏ import Network đi vì ta sẽ lấy mạng từ Vuex
+// 1. Bỏ import Network đi vì ta sẽ lấy mạng từ Vuex
 import storage from '@/services/storage.service';
 import { ImageService } from '@/services/image.service';
 import PointReport from '@/api/PointReport';
-import store from '@/composables/useVuex'; // 🚀 2. Import Vuex Store vào đây
+import store from '@/composables/useVuex'; // 2. Import Vuex Store vào đây
 
 interface PendingItem {
   id: number;
   url: string;
-  data: any;           
-  imageFiles: string[]; 
+  data: any;
+  imageFiles: string[];
 }
 
-// 🚀 3. CHỈ CÒN LẠI 2 BIẾN NÀY LÀ GLOBAL (Bỏ hẳn isOnline và networkListener đi)
+// 3. CHỈ CÒN LẠI 2 BIẾN NÀY LÀ GLOBAL (Bỏ hẳn isOnline và networkListener đi)
 const pendingItems = ref<PendingItem[]>([]);
 const isSyncing = ref(false);
 
@@ -27,11 +27,11 @@ export function useOfflineManager() {
   // --- Hàm gửi dữ liệu ---
   const sendData = async (url: string, data: any, imagesBase64: string[] = []): Promise<void> => {
     const id = Date.now();
-    
+
     const imageFiles: string[] = [];
     for (const base64 of imagesBase64) {
       try {
-        const fileName = await ImageService.saveImage(base64); 
+        const fileName = await ImageService.saveImage(base64);
         imageFiles.push(fileName);
       } catch (err) {
         console.error("Lỗi lưu ảnh vật lý:", err);
@@ -40,7 +40,7 @@ export function useOfflineManager() {
 
     const newItem: PendingItem = { id, url, data, imageFiles };
 
-    // 🚀 4. ĐIỂM ĂN TIỀN: LẤY TRẠNG THÁI MẠNG TRỰC TIẾP TỪ VUEX STORE
+    // 4. ĐIỂM ĂN TIỀN: LẤY TRẠNG THÁI MẠNG TRỰC TIẾP TỪ VUEX STORE
     if (store.state.isOnline) {
       try {
         await uploadToServer(newItem);
@@ -61,18 +61,30 @@ export function useOfflineManager() {
     await storage.set('offline_api_queue', queue);
     await loadPendingItems();
 
+    // Bóc tách user an toàn
     const actualUser: any = store.state.dataUser;
-    console.log(item);
-    
+    const userData = actualUser?.data ? actualUser.data : actualUser;
+
+    // Lấy thêm thông tin từ QR để trang Detail hiển thị đầy đủ tiêu đề
+    const scanData: any = store.state.dataScanQr || {};
+
+    // TẠO MOCK REPORT CHUẨN XÁC
     const mockReport = {
-      prId: `offline_${Date.now()}`, // Tạo ID tạm thời
+      // 1. Lấy luôn item.id (chính là Date.now() dạng số nguyên) làm prId ảo
+      prId: item.data.prId || item.id,
       cpId: item.data.cpId,
-      cpName: item.data.cpName || item.data.cpCode,
-      createdName: actualUser?.fullName || actualUser?.userName || 'Tôi (Đang Offline)',
-      createdAt: item.data.scanAt,
+      cpName: scanData.cpName || item.data.cpCode || 'Khu vực (Đang Offline)',
+      areaName: scanData.areaName || '',
+      cpDescription: scanData.cpDescription || '',
+
+      createdName: userData?.fullName || userData?.userName || 'Tôi (Đang Offline)',
+      createdAt: item.data.createdAt || item.data.scanAt || new Date().toISOString(),
       prHasProblem: item.data.prHasProblem,
       prNote: item.data.prNote,
-      isOfflineMock: true // Cờ nhận biết để tô màu UI
+      isOfflineMock: true,
+
+      // 2. Truyền nguyên mảng ảnh vào để trang AreaDetail đọc được ngay lập tức
+      reportImages: item.data.images || []
     };
 
     store.commit('ADD_OFFLINE_REPORT', mockReport);
@@ -80,30 +92,32 @@ export function useOfflineManager() {
 
   // --- Cơ chế đồng bộ ---
   const syncData = async (): Promise<void> => {
-    // 🚀 5. CHECK MẠNG TỪ VUEX STORE
+    // 5. CHECK MẠNG TỪ VUEX STORE
     if (isSyncing.value || !store.state.isOnline) return;
 
-    isSyncing.value = true; 
+    isSyncing.value = true;
 
     try {
       await loadPendingItems();
-      
+
       if (pendingItems.value.length === 0) {
-        isSyncing.value = false; 
+        isSyncing.value = false;
         return;
       }
 
       const queue = [...pendingItems.value];
-      
+
       for (const item of queue) {
         try {
           await uploadToServer(item);
+
+          store.commit('REMOVE_OFFLINE_REPORT', item.id);
 
           if (item.imageFiles && item.imageFiles.length > 0) {
             for (const fileName of item.imageFiles) {
               try {
                 await ImageService.deleteImage(fileName);
-              } catch (imgError) {}
+              } catch (imgError) { }
             }
           }
 
@@ -112,16 +126,49 @@ export function useOfflineManager() {
           await storage.set('offline_api_queue', updatedQueue);
           pendingItems.value = updatedQueue;
 
-        } catch (error) {
-          console.error(`Đồng bộ thất bại cho item ${item.id}:`, error);
-          break; 
+        } catch (error: any) {
+          // 1. Lấy mã lỗi CHUẨN XÁC (Dành cho Axios hoặc Fetch)
+          const statusCode = error.response?.status || error.status;
+
+          if (statusCode === 400 || statusCode === 422) {
+            // LỖI DO DATA SAI: Xóa hoàn toàn để không chặn đường các item khác
+            console.error(`Dữ liệu sai (Lỗi ${statusCode}), loại bỏ vĩnh viễn item này.`);
+
+            // A. Xóa báo cáo ảo trên Vuex
+            store.commit('REMOVE_OFFLINE_REPORT', item.id);
+
+            // B. Xóa ảnh vật lý (tránh rác bộ nhớ máy)
+            if (item.imageFiles && item.imageFiles.length > 0) {
+              for (const fileName of item.imageFiles) {
+                try {
+                  await ImageService.deleteImage(fileName);
+                } catch (imgError) { }
+              }
+            }
+
+            // C. Cập nhật lại SQLite (Xóa hẳn khỏi hàng chờ)
+            const currentQueue: PendingItem[] = await storage.get('offline_api_queue') || [];
+            const updatedQueue = currentQueue.filter(q => q.id !== item.id);
+            await storage.set('offline_api_queue', updatedQueue);
+            pendingItems.value = updatedQueue;
+
+            // Tiếp tục vòng lặp for để đồng bộ các báo cáo khác
+            continue;
+          }
+          else {
+            // LỖI DO SERVER CHẾT (500, 502, 503, Timeout, rớt mạng giữa chừng...)
+            console.error(`Server sập hoặc mất kết nối mạng ngầm:`, error);
+
+            // Dừng vòng lặp ngay lập tức! Giữ nguyên SQLite và Vuex để chờ lát có mạng gửi lại
+            break;
+          }
         }
       }
     } catch (e) {
       console.error("Lỗi tổng quát trong tiến trình đồng bộ:", e);
     } finally {
-      isSyncing.value = false; 
-      await loadPendingItems(); 
+      isSyncing.value = false;
+      await loadPendingItems();
     }
   };
 
@@ -130,12 +177,12 @@ export function useOfflineManager() {
     return await PointReport.createPointReport(item.data);
   };
 
-  return { 
+  return {
     // Trả về biến isOnline lấy từ Vuex để giao diện (nếu cần) xài chung luôn
-    isOnline: computed(() => store.state.isOnline), 
-    pendingItems, 
-    sendData, 
-    loadPendingItems, 
-    syncData 
+    isOnline: computed(() => store.state.isOnline),
+    pendingItems,
+    sendData,
+    loadPendingItems,
+    syncData
   };
 }

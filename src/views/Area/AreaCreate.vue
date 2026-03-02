@@ -44,57 +44,46 @@
           <ion-card-content>
             <ion-item>
               <ion-checkbox v-model="formData.prHasProblem" @click="handleChecked">
-                  Chọn nếu có vấn đề
+                Chọn nếu có vấn đề
               </ion-checkbox>
             </ion-item>
 
             <ion-item>
-              <ion-textarea
-                  label="Ghi chú thêm"
-                  label-placement="floating"
-                  v-model="formData.prNote"
-                  :rows="3"
-              ></ion-textarea>
+              <ion-textarea label="Ghi chú thêm" label-placement="floating" v-model="formData.prNote"
+                :rows="3"></ion-textarea>
             </ion-item>
 
             <div v-if="formData.prHasProblem">
-            <ion-row class="ion-margin-bottom">
-              <ion-col>
-                <ion-button expand="block" @click="addPhoto">
-                  <ion-icon slot="start" :icon="camera"></ion-icon>
-                  photo
-                </ion-button>
-              </ion-col>
-              
-              <ion-col>
-                <ion-button expand="block" @click="pickMultipleImages">
-                  <ion-icon slot="start" :icon="images"></ion-icon>
-                  images
-                </ion-button>
-              </ion-col>
-            </ion-row>
+              <ion-row class="ion-margin-bottom">
+                <ion-col>
+                  <ion-button expand="block" @click="addPhoto">
+                    <ion-icon slot="start" :icon="camera"></ion-icon>
+                    photo
+                  </ion-button>
+                </ion-col>
 
-            <ion-grid v-if="photos.length > 0">
-              <ion-row>
-                <ion-col size="6" size-md="4" v-for="(photo, index) in photos" :key="index">
-                  <div class="image-container">
-                    <ion-img :src="photo.preview" class="thumb-img"></ion-img>
-                
-                    <div class="delete-btn" @click="removePhoto(index)">
-                      <ion-icon :icon="trash"></ion-icon>
-                    </div>
-                  </div>
+                <ion-col>
+                  <ion-button expand="block" @click="pickMultipleImages">
+                    <ion-icon slot="start" :icon="images"></ion-icon>
+                    images
+                  </ion-button>
                 </ion-col>
               </ion-row>
-            </ion-grid>
 
-            <ion-item v-if="photos.length > 0" class="ion-margin-top">
-              <ion-label class="ion-text-wrap">
-                <p><strong>Tổng số ảnh:</strong> {{ photos.length }}</p>
-                <p>Dữ liệu đã sẵn sàng trong biến <code>photos</code> để gửi API.</p>
-              </ion-label>
-            </ion-item>
-          </div>
+              <ion-grid v-if="photos.length > 0">
+                <ion-row>
+                  <ion-col size="6" size-md="4" v-for="(photo, index) in photos" :key="index">
+                    <div class="image-container">
+                      <ion-img :src="photo.preview" class="thumb-img"></ion-img>
+
+                      <div class="delete-btn" @click="removePhoto(index)">
+                        <ion-icon :icon="trash"></ion-icon>
+                      </div>
+                    </div>
+                  </ion-col>
+                </ion-row>
+              </ion-grid>
+            </div>
 
             <ion-button expand="block" color="success" class="ion-margin-top" @click="handleSubmit">
               <ion-icon slot="start" :icon="sendOutline"></ion-icon>
@@ -102,28 +91,6 @@
             </ion-button>
           </ion-card-content>
         </ion-card>
-
-        <!-- <ion-list lines="full">
-          <ion-item-sliding v-for="item in displayItems" :key="item.id">
-            <ion-item>
-              <ion-thumbnail slot="start" v-if="item.thumb">
-                <img :src="item.thumb" />
-              </ion-thumbnail>
-              <ion-icon v-else slot="start" :icon="cloudOfflineOutline" color="warning"></ion-icon>
-              
-              <ion-label>
-                <h2>{{ item.data.note || 'Không có nội dung nè' }}</h2>
-                <p>{{ item.imageFiles?.length || 0 }} ảnh - {{ formatDate(item.id) }}</p>
-              </ion-label>
-            </ion-item>
-            
-            <ion-item-options side="end">
-              <ion-item-option color="danger" @click="deleteItem(item.id)">
-                <ion-icon slot="icon-only" :icon="trashOutline"></ion-icon>
-              </ion-item-option>
-            </ion-item-options>
-          </ion-item-sliding>
-        </ion-list> -->
       </div>
 
       <div v-else class="ion-text-center ion-padding">
@@ -133,7 +100,7 @@
 
       <div v-if="pendingItems.length > 0" class="ion-margin-top">
         <ion-list-header>
-          <ion-label>Đang chờ đồng bộ ({{ pendingItems.length }})</ion-label>
+          <ion-label>Đang chờ đồng bộ ({{ pendingItems?.length }})</ion-label>
           <ion-button @click="syncData">Thử lại ngay</ion-button>
         </ion-list-header>
 
@@ -143,7 +110,7 @@
               <ion-icon slot="start" :icon="cloudOfflineOutline" color="warning"></ion-icon>
               <ion-label>
                 <h2>{{ item.data.note || 'Không có tiêu đề' }}</h2>
-                <p>{{ item.imageFiles.length }} hình ảnh - {{ formatDate(item.id) }}</p>
+                <p>{{ item.imageFiles?.length }} hình ảnh - {{ formatDate(item.id) }}</p>
               </ion-label>
             </ion-item>
 
@@ -161,11 +128,11 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, onMounted } from 'vue';
-import { 
-  IonPage, IonHeader, IonToolbar, IonTitle, IonContent, IonList, 
+import {
+  IonPage, IonHeader, IonToolbar, IonTitle, IonContent, IonList,
   IonItem, IonTextarea, IonCheckbox, IonButton, IonIcon, IonCard,
   IonCardHeader, IonCardTitle, IonCardSubtitle, IonCardContent,
-  IonGrid, IonRow, IonCol, IonImg, IonLabel, IonItemSliding, IonItemOptions, IonItemOption, 
+  IonGrid, IonRow, IonCol, IonImg, IonLabel, IonItemSliding, IonItemOptions, IonItemOption,
   IonListHeader, loadingController, onIonViewWillEnter, IonSpinner, toastController, IonButtons, IonBackButton,
 } from '@ionic/vue';
 import { sendOutline, camera, images, trash } from 'ionicons/icons';
@@ -175,18 +142,51 @@ import { cloudOfflineOutline, trashOutline } from 'ionicons/icons';
 import { useOfflineManager } from '@/composables/useOfflineManager';
 import storage from '@/services/storage.service';
 import { ImageService } from '@/services/image.service';
+import router from '@/router';
+import storageService from '@/services/storage.service';
 
 const store = useStore()
 const isReady = ref(false) // biến để kiểm soát UI
 
 // Bóc tách an toàn dữ liệu Checkpoint quét được từ QR
-// 🚀 TỐI ƯU 1: UI giờ chỉ việc "hưởng thụ" data sạch từ Vuex
-const dataScanQr = computed(() => store.state.dataScanQr);
+const dataScanQr = computed(() => {
+  const rawData = store.state.dataScanQr;
+  if (!rawData) return null;
 
-// Dùng computed cho ảnh QR thay vì gọi hàm thủ công, UI sẽ hiện ảnh ngay lập tức 0ms
+  // 1. Nếu đây là cục dữ liệu phẳng (Offline)
+  if (rawData.cpName) {
+    return rawData;
+  }
+
+  // 2. Nếu API bọc trong data (Online)
+  if (rawData.data && rawData.data.cpName) {
+    return rawData.data;
+  }
+
+  // 3. Nếu API bọc trong data.data (Online)
+  if (rawData.data && rawData.data.data && rawData.data.data.cpName) {
+    return rawData.data.data;
+  }
+
+  // 4. Nếu API trả về Mảng (Array)
+  if (Array.isArray(rawData) && rawData.length > 0) {
+    return rawData[0];
+  }
+  if (rawData.data && Array.isArray(rawData.data) && rawData.data.length > 0) {
+    return rawData.data[0];
+  }
+
+  // Trả về mặc định nếu không khớp mẫu nào ở trên
+  return rawData;
+});
+
+// Dùng computed cho ảnh QR
 const listImages = computed(() => {
-  if (dataScanQr.value && dataScanQr.value.cpQr) {
-    return [{ url: `data:image/png;base64,${dataScanQr.value.cpQr}` }];
+  // Lấy dataScanQr.value (đã được bóc tách vỏ ở trên)
+  const currentData = dataScanQr.value;
+
+  if (currentData && currentData.cpQr) {
+    return [{ url: `data:image/png;base64,${currentData.cpQr}` }];
   }
   return [];
 });
@@ -196,10 +196,10 @@ onMounted(async () => {
   if (!store.state.isHydrated) {
     await store.dispatch('initApp');
   }
-  
+
   // BƯỚC 2: Load các dữ liệu báo cáo offline đang chờ đồng bộ
   await loadPendingItemsWithImages();
-  
+
   // BƯỚC 3: Bật đèn xanh cho UI render
   isReady.value = true;
 });
@@ -216,7 +216,7 @@ const showToast = async (message: string, color: string = 'success') => {
     message: message,
     duration: 2000,
     color: color,
-    position: 'bottom',
+    position: 'top',
   });
   await toast.present();
 };
@@ -244,7 +244,7 @@ interface Photo {
   fileName: string;
   rawBase64: string;
   preview: string;
-  [key: string]: any; 
+  [key: string]: any;
 }
 
 interface QueueItem {
@@ -309,7 +309,7 @@ const pickMultipleImages = async (): Promise<void> => {
 const addPhoto = async (): Promise<void> => {
   try {
     const image = await Camera.getPhoto({
-      quality: 60, width: 1024, height: 1024, allowEditing: false, 
+      quality: 60, width: 1024, height: 1024, allowEditing: false,
       resultType: CameraResultType.Uri, direction: CameraDirection.Rear, source: CameraSource.Camera
     });
 
@@ -331,12 +331,12 @@ const removePhoto = (index: number): void => {
 const handleSubmit = async (): Promise<void> => {
   const now = new Date();
   const currentTimeString = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().slice(0, 19);
-  
+
   if (!dataScanQr.value?.cpId) {
     await showToast('Lỗi: Không tìm thấy dữ liệu Checkpoint', 'danger');
     return;
   }
-  
+
   const loading = await loadingController.create({ message: 'Đang lưu...' });
   await loading.present();
 
@@ -354,24 +354,26 @@ const handleSubmit = async (): Promise<void> => {
 
     const base64ImagesOnly = mapImages.map(img => img.priImage);
 
-    // 🚀 LẤY USER NGAY LÚC SUBMIT TỪ VUEX (Bóc tách an toàn)
+    // LẤY USER NGAY LÚC SUBMIT TỪ VUEX (Bóc tách an toàn)
     const rawUser = store.state.dataUser;
     const actualUser = rawUser?.data ? rawUser.data : rawUser;
     const userId = actualUser?.userId || '';
 
     if (!userId) {
-       console.warn("Cảnh báo: Không tìm thấy userId khi offline.");
-       // Tùy logic nghiệp vụ, bạn có thể chặn submit hoặc vẫn cho lưu với userId rỗng
+      console.warn("Cảnh báo: Không tìm thấy userId khi offline.");
+      // Tùy logic nghiệp vụ, bạn có thể chặn submit hoặc vẫn cho lưu với userId rỗng
     }
+
+    const currentTime_scanQr = await storageService.get('currentTime_scanqr')
 
     const formSubmitData = {
       createdAt: currentTimeString,
       prHasProblem: formData.prHasProblem,
       prNote: formData.prNote,
-      cpId: dataScanQr.value.cpId,            
-      createdBy: userId, // 🚀 Sử dụng userId đã lấy an toàn
-      scanAt: store.state.currentTime,        
-      images: formData.prHasProblem ? mapImages : [] 
+      cpId: dataScanQr.value.cpId,
+      createdBy: userId, // Sử dụng userId đã lấy an toàn
+      scanAt: currentTime_scanQr,
+      images: formData.prHasProblem ? mapImages : []
     };
 
     await sendData(photos.value[0]?.preview, formSubmitData, base64ImagesOnly);
@@ -379,12 +381,16 @@ const handleSubmit = async (): Promise<void> => {
     // RESET FORM
     formData.prNote = '';
     formData.prHasProblem = false;
-    photos.value = []; 
-    
+    photos.value = [];
+
+    store.commit('SET_DATASCANQR', null);
+    await storageService.remove('currentTime_scanqr');
+
     await loadPendingItemsWithImages();
     await loading.dismiss();
     await showToast('Đã lưu dữ liệu thành công!', 'success');
 
+    router.replace({ path: '/home' })
   } catch (error) {
     await loading.dismiss();
     console.error("Gửi dữ liệu thất bại:", error);
@@ -400,14 +406,20 @@ const deleteItem = async (id: number | string): Promise<void> => {
     try {
       if (itemToDelete.imageFiles) {
         for (const fileName of itemToDelete.imageFiles) {
-          await ImageService.deleteImage(fileName);
+          await ImageService.deleteImage(fileName); // Xóa ảnh vật lý
         }
       }
     } catch (e) { console.error("Lỗi xóa file:", e); }
 
+    // 1. Cập nhật SQLite (xóa khỏi hàng chờ)
     const updatedQueue = currentQueue.filter(i => i.id !== id);
     await storage.set('offline_api_queue', updatedQueue);
+
+    // 2. Cập nhật UI hàng chờ đồng bộ
     await loadPendingItemsWithImages();
+
+    // 3. QUAN TRỌNG: Cập nhật Vuex Store (Xóa dòng dữ liệu ảo)
+    store.commit('REMOVE_OFFLINE_REPORT', id);
   }
 };
 
@@ -425,6 +437,10 @@ const loadPendingItemsWithImages = async (): Promise<void> => {
 </script>
 
 <style scoped>
+ion-toolbar {
+  padding: 0 !important;
+}
+
 /*CSS thêm và chụp hình*/
 ion-list-header {
   --background: #f4f5f8;
@@ -435,8 +451,9 @@ ion-list-header {
   position: relative;
   border-radius: 8px;
   overflow: hidden;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-  aspect-ratio: 1 / 1; /* Giữ khung hình vuông */
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  aspect-ratio: 1 / 1;
+  /* Giữ khung hình vuông */
   background: #f0f0f0;
 }
 
@@ -464,5 +481,6 @@ ion-list-header {
   cursor: pointer;
   z-index: 10;
 }
+
 /* */
 </style>

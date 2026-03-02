@@ -20,11 +20,7 @@
       <ion-card v-else>
         <ion-grid class="image-grid" v-if="listImages.length > 0">
           <ion-row>
-            <ion-col 
-              v-for="(img, index) in listImages" 
-              :key="index"
-              size="4" 
-              size-md="2">
+            <ion-col v-for="(img, index) in listImages" :key="index" size="4" size-md="2">
               <div class="thumbnail-wrapper" @click="openModal(img)">
                 <ion-img :src="img.url" class="thumb-img"></ion-img>
               </div>
@@ -77,10 +73,10 @@
 
 <script setup lang="ts">
 import {
-    IonHeader, IonToolbar, IonTitle, IonCard, IonCardHeader, IonCardTitle,
-    IonCardSubtitle, IonCardContent, IonCol, IonGrid, IonRow, IonPage,
-    IonContent, IonLabel, IonImg, IonModal, IonButtons, IonBackButton,
-    IonSpinner, IonList, IonItem
+  IonHeader, IonToolbar, IonTitle, IonCard, IonCardHeader, IonCardTitle,
+  IonCardSubtitle, IonCardContent, IonCol, IonGrid, IonRow, IonPage,
+  IonContent, IonLabel, IonImg, IonModal, IonButtons, IonBackButton,
+  IonSpinner, IonList, IonItem
 } from '@ionic/vue'
 import { ref, computed } from 'vue';
 import { useStore } from 'vuex';
@@ -89,7 +85,7 @@ const store = useStore();
 
 // State cho Modal ảnh
 const isModalOpen = ref(false);
-const selectedImage = ref<{url: string} | null>(null);
+const selectedImage = ref<{ url: string } | null>(null);
 
 /**
  * Lấy data từ Store dựa trên ID từ URL
@@ -97,9 +93,28 @@ const selectedImage = ref<{url: string} | null>(null);
  */
 const getPrIdData = computed(() => {
   const dataStoreRP = store.state.currentCheckpoint;
-  console.log(dataStoreRP);
-  
-  return dataStoreRP.data;
+
+  // 1. Nếu Store rỗng, trả về null để hiện Loading
+  if (!dataStoreRP) {
+    return null;
+  }
+
+  // 2. Bóc tách lớp vỏ bọc bên ngoài
+  let actualData = dataStoreRP?.data?.data || dataStoreRP?.data || dataStoreRP;
+
+  // 3. XỬ LÝ QUAN TRỌNG: Nếu dữ liệu đang nằm trong một mảng, lấy phần tử đầu tiên ra
+  if (Array.isArray(actualData)) {
+    if (actualData.length > 0) {
+      actualData = actualData[0]; // Lấy Object ở vị trí đầu tiên
+    } else {
+      return null; // Nếu mảng rỗng thì cũng coi như không có data
+    }
+  }
+
+  console.log("Dữ liệu ĐÃ CHUẨN HOÁ thành Object:", actualData);
+
+  // Trả về một Object chuẩn xác cho giao diện HTML đọc
+  return actualData;
 });
 
 /**
@@ -110,9 +125,9 @@ const listImages = computed(() => {
   if (data && data.reportImages && Array.isArray(data.reportImages)) {
     return data.reportImages.map((item: any) => ({
       // Kiểm tra nếu chuỗi đã có prefix data:image thì giữ nguyên, ngược lại thì thêm vào
-      url: item.priImage?.startsWith('data:image') 
-           ? item.priImage 
-           : `data:image/jpeg;base64,${item.priImage}`
+      url: item.priImage?.startsWith('data:image')
+        ? item.priImage
+        : `data:image/jpeg;base64,${item.priImage}`
     }));
   }
   return [];
@@ -130,7 +145,7 @@ const formatDate = (dateStr: string) => {
   });
 };
 
-const openModal = (img: {url: string}) => {
+const openModal = (img: { url: string }) => {
   selectedImage.value = img;
   isModalOpen.value = true;
 };
@@ -141,6 +156,10 @@ const closeModal = () => {
 </script>
 
 <style scoped>
+ion-toolbar {
+  padding: 0 !important;
+}
+
 .image-grid {
   padding: 10px;
 }
@@ -150,7 +169,7 @@ const closeModal = () => {
   border-radius: 8px;
   overflow: hidden;
   border: 1px solid #e0e0e0;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 .thumb-img {

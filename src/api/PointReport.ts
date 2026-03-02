@@ -5,15 +5,15 @@ export default {
     return request.post('/PointReportView/getlist', {});
   },
   postPointReport(id: any) {
-    return request.post('/PointReportView/getlist', {cpId: id});
+    return request.post('/PointReportView/getlist', { cpId: id });
   },
   getPointReportId(id: any) {
     return request.get(`/PointReportView/getone/${id}`);
   },
   createPointReport(data: any) {
     console.log(data);
-    
-    return request.post(`/PointReport/created`, {
+
+    return request.post(`/PointReport/create`, {
       prHasProblem: data.prHasProblem,
       createdAt: data.createdAt,
       prNote: data.prNote,

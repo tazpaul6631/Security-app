@@ -9,7 +9,8 @@ const store = createStore({
       dataMenu: [],
       dataListCP: [],
       dataCheckpointsId: [],
-      dataAreaBU: [],        
+      dataAreaBU: [],
+      dataListRoute: [],
       dataUser: null,
       dataScanQr: null,
       token: null,
@@ -43,6 +44,9 @@ const store = createStore({
     SET_DATA_AREA_BU(state, data) {
       state.dataAreaBU = data
     },
+    SET_DATA_LIST_ROUTE(state, data) {
+      state.dataListRoute = data
+    },
     SET_DATAUSER(state, data) {
       state.dataUser = data
     },
@@ -70,11 +74,11 @@ const store = createStore({
       state.currentCheckpoint = data;
     },
 
-    // 🚀 THÊM MỚI: Hàm bơm báo cáo Offline giả vào Store (Đã fix lỗi gạch chân)
+    // Hàm bơm báo cáo Offline giả vào Store (Đã fix lỗi gạch chân)
     ADD_OFFLINE_REPORT(state: any, report: any) {
       // 1. Nhét vào kho tổng CheckpointsId (Bây giờ nó chắc chắn là Mảng)
       let allReports = Array.isArray(state.dataCheckpointsId) ? state.dataCheckpointsId : [];
-      
+
       // Đẩy báo cáo mới lên đầu mảng và gán thẳng lại (Không cần .data nữa)
       state.dataCheckpointsId = [report, ...allReports];
 
@@ -85,13 +89,39 @@ const store = createStore({
       } else {
         currentCPList = state.dataListCP?.data || [];
       }
-      
+
       // Nếu danh sách rỗng hoặc cpId trùng với màn hình đang xem thì bơm vào UI
       if (currentCPList.length === 0 || String(currentCPList[0]?.cpId) === String(report.cpId)) {
-          currentCPList = [report, ...currentCPList];
-          
-          // Trả về đúng cấu trúc [{ data: [...] }] mà giao diện CPIndex đang mong đợi
-          state.dataListCP = [{ data: currentCPList }];
+        currentCPList = [report, ...currentCPList];
+
+        // Trả về đúng cấu trúc [{ data: [...] }] mà giao diện CPIndex đang mong đợi
+        state.dataListCP = [{ data: currentCPList }];
+      }
+    },
+
+    // Hàm quét sạch báo cáo ảo khỏi Vuex
+    REMOVE_OFFLINE_REPORT(state: any, prId: any) {
+      // 1. Quét và xóa khỏi kho tổng (dataCheckpointsId)
+      if (Array.isArray(state.dataCheckpointsId)) {
+        state.dataCheckpointsId = state.dataCheckpointsId.filter(
+          (item: any) => String(item.prId) !== String(prId)
+        );
+      }
+
+      // 2. Quét và xóa khỏi màn hình danh sách hiện tại (dataListCP)
+      let currentCPList = [];
+      if (Array.isArray(state.dataListCP)) {
+        currentCPList = state.dataListCP[0]?.data || state.dataListCP;
+      } else {
+        currentCPList = state.dataListCP?.data || [];
+      }
+
+      if (Array.isArray(currentCPList)) {
+        currentCPList = currentCPList.filter(
+          (item: any) => String(item.prId) !== String(prId)
+        );
+        // Gán ngược lại vào Store theo đúng cấu trúc cũ
+        state.dataListCP = [{ data: currentCPList }];
       }
     },
 
@@ -101,6 +131,7 @@ const store = createStore({
       state.dataListCP = []
       state.dataCheckpointsId = []
       state.dataAreaBU = []
+      state.dataListRoute = []
       state.dataUser = null
       state.dataScanQr = null
       state.token = null
@@ -115,209 +146,228 @@ const store = createStore({
 
   // 4. Actions: Xử lý bất đồng bộ (API call) rồi gọi mutation
   actions: {
-      async syncAllData({ commit }, apiList) {
-        console.log('Bắt đầu đồng bộ Vuex...');
-        
-        // Thêm key 'mutation' để mapping tự động từ API -> SQLite -> Vuex
-        const steps = [
-          { name: 'CheckPoints', key: 'checkpoints', isLarge: false, mutation: 'SET_DATACP' },
-          { name: 'CheckPointsId', key: 'checkpoints_id', isLarge: false, mutation: 'SET_DATA_CHECKPOINTS_ID' },
-          { name: 'AreaBU', key: 'area_bu', isLarge: false, mutation: 'SET_DATA_AREA_BU' },
-        ];
+    async syncAllData({ commit }, apiList) {
+      console.log('Bắt đầu đồng bộ Vuex...');
 
-        commit('SET_SYNC_STATUS', { progress: 0, message: 'Khởi động đồng bộ...', isSyncing: true });
+      // Thêm key 'mutation' để mapping tự động từ API -> SQLite -> Vuex
+      const steps = [
+        { name: 'CheckPoints', key: 'checkpoints', isLarge: false, mutation: 'SET_DATACP' },
+        { name: 'CheckPointsId', key: 'checkpoints_id', isLarge: false, mutation: 'SET_DATA_CHECKPOINTS_ID' },
+        { name: 'AreaBU', key: 'area_bu', isLarge: false, mutation: 'SET_DATA_AREA_BU' },
+        { name: 'ListRoute', key: 'list_route', isLarge: false, mutation: 'SET_DATA_LIST_ROUTE' },
+      ];
 
-        for (let i = 0; i < steps.length; i++) {
-          const step = steps[i];
-          const progress = Math.round((i / steps.length) * 100);
+      commit('SET_SYNC_STATUS', { progress: 0, message: 'Khởi động đồng bộ...', isSyncing: true });
 
-          commit('SET_SYNC_STATUS', { 
-            progress, 
-            message: `Đang tải ${step.name}...`, 
-            isSyncing: true 
-          });
+      for (let i = 0; i < steps.length; i++) {
+        const step = steps[i];
+        const progress = Math.round((i / steps.length) * 100);
 
-          try {
-              const apiFunc = apiList[step.key];
-              if (typeof apiFunc !== 'function') {
-                  console.warn(`Không tìm thấy hàm API cho key: ${step.key}`);
-                  continue; 
-              }
+        commit('SET_SYNC_STATUS', {
+          progress,
+          message: `Đang tải ${step.name}...`,
+          isSyncing: true
+        });
 
-              const response = await apiFunc();
-              const data = response?.data; 
-
-              if (!data) {
-                  console.warn(`Dữ liệu của ${step.name} trả về null/undefined`);
-                  continue;
-              }
-
-              // 1. LƯU VÀO SQLITE
-              if (step.isLarge && Array.isArray(data)) {
-                  await Promise.all(data.map(item => {
-                      const id = item.id || item.cpId || item.prId || item.userCode;
-                      return storageService.set(`${step.key}_${id}`, item);
-                  }));
-              } else {
-                  await storageService.set(step.key, data);
-              }
-
-              // 2. TỰ ĐỘNG COMMIT LÊN VUEX STATE
-              if (step.mutation) {
-                  commit(step.mutation, data);
-              }
-
-          } catch (error) {
-              console.error(`Lỗi tại bước ${step.name}:`, error);
-          }
-        }
-
-        commit('SET_SYNC_STATUS', { progress: 100, message: 'Đồng bộ hoàn tất!', isSyncing: false });
-      },
-
-      async initApp({ dispatch, commit }) {
-        console.log('initApp running...');
         try {
-          // Khôi phục tất cả dữ liệu cùng lúc
-          await Promise.all([
-            dispatch('restoreScanQr'),
-            dispatch('restoreUser'),
-            dispatch('restoreCurrentTime'),
-            dispatch('restoreLastCheckpoint'),
-            dispatch('restoreToken'),
-            dispatch('restoreMenu'),
-            // Thêm các hàm khôi phục dữ liệu đồng bộ
-            dispatch('restoreCheckpoints'),
-            dispatch('restoreCheckpointsId'),
-            dispatch('restoreAreaBU')
-          ]);
-        } catch (e) {
-          console.error("Lỗi khi khởi tạo Store:", e);
-        } finally {
-          commit('SET_HYDRATED', true);
-        }
-      },
-
-      // --- CÁC HÀM RESTORE TỪ SQLITE LÊN VUEX KHI F5 ---
-
-      async restoreCheckpoints({ commit, state }) {
-        if (!state.dataListCP || state.dataListCP.length === 0) {
-          let response = await storageService.get('checkpoints');
-          
-          // Đề phòng SQLite trả về chuỗi JSON thô
-          if (typeof response === 'string') {
-            try { response = JSON.parse(response); } catch (e) {}
+          const apiFunc = apiList[step.key];
+          if (typeof apiFunc !== 'function') {
+            console.warn(`Không tìm thấy hàm API cho key: ${step.key}`);
+            continue;
           }
 
-          const actualData = response?.data ? response.data : response;
-          
-          if (actualData) {
-            commit('SET_DATACP', actualData);
-            // THÊM DÒNG NÀY ĐỂ CHỨNG MINH DỮ LIỆU ĐÃ LÊN VUEX THÀNH CÔNG
-            console.log('✅ ĐÃ BƠM AREA_BU VÀO VUEX:', actualData); 
-          }
-        }
-      },
+          const response = await apiFunc();
+          const data = response?.data;
 
-      async restoreCheckpointsId({ commit, state }) {
-        if (!state.dataCheckpointsId || state.dataCheckpointsId.length === 0) {
-          let response = await storageService.get('checkpoints_id');
-          
-          // Đề phòng SQLite trả về chuỗi JSON thô
-          if (typeof response === 'string') {
-            try { response = JSON.parse(response); } catch (e) {}
+          if (!data) {
+            console.warn(`Dữ liệu của ${step.name} trả về null/undefined`);
+            continue;
           }
 
-          const actualData = response?.data ? response.data : response;
-          
-          if (actualData) {
-            commit('SET_DATA_CHECKPOINTS_ID', actualData);
-            // THÊM DÒNG NÀY ĐỂ CHỨNG MINH DỮ LIỆU ĐÃ LÊN VUEX THÀNH CÔNG
-            console.log('✅ ĐÃ BƠM AREA_BU VÀO VUEX:', actualData); 
-          }
-        }
-      },
-
-      async restoreAreaBU({ commit, state }) {
-        if (!state.dataAreaBU || state.dataAreaBU.length === 0) {
-          let response = await storageService.get('area_bu');
-          
-          // Đề phòng SQLite trả về chuỗi JSON thô
-          if (typeof response === 'string') {
-            try { response = JSON.parse(response); } catch (e) {}
+          // 1. LƯU VÀO SQLITE
+          if (step.isLarge && Array.isArray(data)) {
+            await Promise.all(data.map(item => {
+              const id = item.id || item.cpId || item.prId || item.userCode;
+              return storageService.set(`${step.key}_${id}`, item);
+            }));
+          } else {
+            await storageService.set(step.key, data);
           }
 
-          const actualData = response?.data ? response.data : response;
-          
-          if (actualData) {
-            commit('SET_DATA_AREA_BU', actualData);
-            // THÊM DÒNG NÀY ĐỂ CHỨNG MINH DỮ LIỆU ĐÃ LÊN VUEX THÀNH CÔNG
-            console.log('✅ ĐÃ BƠM AREA_BU VÀO VUEX:', actualData); 
-          }
-        }
-      },
-
-      async restoreMenu({ commit, state }) {
-        if (!state.dataMenu || state.dataMenu.length === 0) {
-          const data = await storageService.get('menu_data'); 
-          if (data) commit('SET_DATAMENU', data);
-        }
-      },
-
-      async restoreToken({ commit, state }) {
-        if (!state.token) {
-          const data = await storageService.get('user_token'); 
-          if (data) commit('SET_TOKEN', data);
-          else commit('SET_TOKEN', null); 
-        }
-      },
-
-      async restoreScanQr({ commit, state }) {
-        if (!state.dataScanQr) {
-          let response = await storageService.get('data_scanqr'); 
-          
-          // Đề phòng parse chuỗi JSON
-          if (typeof response === 'string') {
-            try { response = JSON.parse(response); } catch (e) {}
+          // 2. TỰ ĐỘNG COMMIT LÊN VUEX STATE
+          if (step.mutation) {
+            commit(step.mutation, data);
           }
 
-          // 🚀 BÓC TÁCH AN TOÀN TRƯỚC KHI ĐẨY VÀO VUEX
-          const actualData = response?.data ? response.data : response;
-          
-          if (actualData) commit('SET_DATASCANQR', actualData);
+        } catch (error) {
+          console.error(`Lỗi tại bước ${step.name}:`, error);
         }
-      },
+      }
 
-      async restoreUser({ commit, state }) {
-        if (!state.dataUser) {
-          let response = await storageService.get('user_data');
-          
-          // Đề phòng parse chuỗi JSON
-          if (typeof response === 'string') {
-            try { response = JSON.parse(response); } catch (e) {}
-          }
+      commit('SET_SYNC_STATUS', { progress: 100, message: 'Đồng bộ hoàn tất!', isSyncing: false });
+    },
 
-          // 🚀 BÓC TÁCH AN TOÀN TRƯỚC KHI ĐẨY VÀO VUEX
-          const actualData = response?.data ? response.data : response;
-          if (actualData) commit('SET_DATAUSER', actualData);
+    async initApp({ dispatch, commit }) {
+      console.log('initApp running...');
+      try {
+        // Khôi phục tất cả dữ liệu cùng lúc
+        await Promise.all([
+          dispatch('restoreScanQr'),
+          dispatch('restoreUser'),
+          dispatch('restoreCurrentTime'),
+          dispatch('restoreLastCheckpoint'),
+          dispatch('restoreToken'),
+          dispatch('restoreMenu'),
+          dispatch('restoreCheckpoints'),
+          dispatch('restoreCheckpointsId'),
+          dispatch('restoreAreaBU'),
+          dispatch('restoreListRoute')
+        ]);
+      } catch (e) {
+        console.error("Lỗi khi khởi tạo Store:", e);
+      } finally {
+        commit('SET_HYDRATED', true);
+      }
+    },
+
+    // --- CÁC HÀM RESTORE TỪ SQLITE LÊN VUEX KHI F5 ---
+    async restoreCheckpoints({ commit, state }) {
+      if (!state.dataListCP || state.dataListCP.length === 0) {
+        let response = await storageService.get('checkpoints');
+
+        // Đề phòng SQLite trả về chuỗi JSON thô
+        if (typeof response === 'string') {
+          try { response = JSON.parse(response); } catch (e) { }
         }
-      },
 
-      async restoreCurrentTime({ commit, state }) {
-        if (!state.currentTime) {
-          const data = await storageService.get('currentTime');
-          if (data) commit('SET_CURRENT_TIME', data);
-        }
-      },
+        const actualData = response?.data ? response.data : response;
 
-      async restoreLastCheckpoint({ commit }) {
-        try {
-          const data = await storageService.get('last_selected_checkpoint');
-          if (data) commit('SET_CURRENT_CHECKPOINT', data);
-        } catch (e) {
-          console.error("Error restoring checkpoint:", e);
+        if (actualData) {
+          commit('SET_DATACP', actualData);
+          // THÊM DÒNG NÀY ĐỂ CHỨNG MINH DỮ LIỆU ĐÃ LÊN VUEX THÀNH CÔNG
+          console.log('✅ ĐÃ BƠM DATACP VÀO VUEX:', actualData);
         }
-      },
+      }
+    },
+
+    async restoreCheckpointsId({ commit, state }) {
+      if (!state.dataCheckpointsId || state.dataCheckpointsId.length === 0) {
+        let response = await storageService.get('checkpoints_id');
+
+        // Đề phòng SQLite trả về chuỗi JSON thô
+        if (typeof response === 'string') {
+          try { response = JSON.parse(response); } catch (e) { }
+        }
+
+        const actualData = response?.data ? response.data : response;
+
+        if (actualData) {
+          commit('SET_DATA_CHECKPOINTS_ID', actualData);
+          // THÊM DÒNG NÀY ĐỂ CHỨNG MINH DỮ LIỆU ĐÃ LÊN VUEX THÀNH CÔNG
+          console.log('✅ ĐÃ BƠM CHECKPOINTS_ID VÀO VUEX:', actualData);
+        }
+      }
+    },
+
+    async restoreAreaBU({ commit, state }) {
+      if (!state.dataAreaBU || state.dataAreaBU.length === 0) {
+        let response = await storageService.get('area_bu');
+
+        // Đề phòng SQLite trả về chuỗi JSON thô
+        if (typeof response === 'string') {
+          try { response = JSON.parse(response); } catch (e) { }
+        }
+
+        const actualData = response?.data ? response.data : response;
+
+        if (actualData) {
+          commit('SET_DATA_AREA_BU', actualData);
+          // THÊM DÒNG NÀY ĐỂ CHỨNG MINH DỮ LIỆU ĐÃ LÊN VUEX THÀNH CÔNG
+          console.log('✅ ĐÃ BƠM AREA_BU VÀO VUEX:', actualData);
+        }
+      }
+    },
+
+    async restoreListRoute({ commit, state }) {
+      if (!state.dataListRoute || state.dataListRoute.length === 0) {
+        let response = await storageService.get('list_route');
+
+        // Đề phòng SQLite trả về chuỗi JSON thô
+        if (typeof response === 'string') {
+          try { response = JSON.parse(response); } catch (e) { }
+        }
+
+        const actualData = response?.data ? response.data : response;
+
+        if (actualData) {
+          commit('SET_DATA_LIST_ROUTE', actualData);
+          // THÊM DÒNG NÀY ĐỂ CHỨNG MINH DỮ LIỆU ĐÃ LÊN VUEX THÀNH CÔNG
+          console.log('✅ ĐÃ BƠM LIST_ROUTE VÀO VUEX:', actualData);
+        }
+      }
+    },
+
+    async restoreMenu({ commit, state }) {
+      if (!state.dataMenu || state.dataMenu.length === 0) {
+        const data = await storageService.get('menu_data');
+        if (data) commit('SET_DATAMENU', data);
+      }
+    },
+
+    async restoreToken({ commit, state }) {
+      if (!state.token) {
+        const data = await storageService.get('user_token');
+        if (data) commit('SET_TOKEN', data);
+        else commit('SET_TOKEN', null);
+      }
+    },
+
+    async restoreScanQr({ commit, state }) {
+      if (!state.dataScanQr) {
+        let response = await storageService.get('data_scanqr');
+
+        // Đề phòng parse chuỗi JSON
+        if (typeof response === 'string') {
+          try { response = JSON.parse(response); } catch (e) { }
+        }
+
+        // BÓC TÁCH AN TOÀN TRƯỚC KHI ĐẨY VÀO VUEX
+        const actualData = response?.data ? response.data : response;
+
+        if (actualData) commit('SET_DATASCANQR', actualData);
+      }
+    },
+
+    async restoreUser({ commit, state }) {
+      if (!state.dataUser) {
+        let response = await storageService.get('user_data');
+
+        // Đề phòng parse chuỗi JSON
+        if (typeof response === 'string') {
+          try { response = JSON.parse(response); } catch (e) { }
+        }
+
+        // BÓC TÁCH AN TOÀN TRƯỚC KHI ĐẨY VÀO VUEX
+        const actualData = response?.data ? response.data : response;
+        if (actualData) commit('SET_DATAUSER', actualData);
+      }
+    },
+
+    async restoreCurrentTime({ commit, state }) {
+      if (!state.currentTime) {
+        const data = await storageService.get('currentTime');
+        if (data) commit('SET_CURRENT_TIME', data);
+      }
+    },
+
+    async restoreLastCheckpoint({ commit }) {
+      try {
+        const data = await storageService.get('last_selected_checkpoint');
+        if (data) commit('SET_CURRENT_CHECKPOINT', data);
+      } catch (e) {
+        console.error("Error restoring checkpoint:", e);
+      }
+    },
   }
 })
 

@@ -40,7 +40,7 @@ export function useSQLite() {
         console.log('--- SQLite: Bắt đầu khởi tạo ---');
         await sqliteConnection.checkConnectionsConsistency();
         const isConn = await sqliteConnection.isConnection(DB_NAME, false);
-        
+
         let db: SQLiteDBConnection;
 
         if (isConn.result) {
@@ -111,32 +111,36 @@ export function useSQLite() {
     await dbInstance.value?.run('DELETE FROM settings WHERE key = ?', [key]);
   };
 
-  // ... (Các hàm khác giữ nguyên logic nhưng nhớ thêm await initDatabase() ở đầu)
-
   const logout = async () => {
     await initDatabase();
     if (!dbInstance.value) return;
     try {
+      // Dùng lệnh DELETE có điều kiện (WHERE) để giữ lại danh bạ offline
       await dbInstance.value.execute(`
         DELETE FROM profile; 
-        DELETE FROM settings; 
-        DELETE FROM sync_queue;
+        
+        -- Xóa tất cả trong bảng settings NGOẠI TRỪ danh bạ offline
+        DELETE FROM settings WHERE key NOT IN ('offline_users_dict'); 
       `);
-      // Lưu ý: Không nên set isReady = false ở đây vì DB vẫn đang mở, 
-      // chỉ là dữ liệu bên trong bị xóa thôi.
+
+      // Lưu ý: Không nên xóa bảng sync_queue ở đây. 
+      // Nhỡ người dùng quét QR lúc offline, chưa kịp có mạng đã bấm Đăng Xuất thì sao? 
+      // Xóa sync_queue là mất luôn báo cáo offline của họ chưa kịp gửi đi.
+
+      console.log('✅ Đăng xuất an toàn, đã dọn phiên làm việc nhưng giữ lại danh bạ Offline!');
     } catch (err) {
       console.error('Lỗi logout:', err);
     }
   };
 
-  return { 
-    isReady, 
-    initDatabase, 
-    setItem, 
-    getItem, 
+  return {
+    isReady,
+    initDatabase,
+    setItem,
+    getItem,
     removeItem,
     logout,
     // Trả về thêm instance để dùng trực tiếp nếu cần
-    getDbInstance: () => dbInstance.value 
+    getDbInstance: () => dbInstance.value
   };
 }
