@@ -11,11 +11,13 @@ const store = createStore({
       dataCheckpointsId: [],
       dataAreaBU: [],
       dataListRoute: [],
+      dataReportNoteCategory: [],
       dataUser: null,
       dataScanQr: null,
       token: null,
       currentTime: null,
       isHydrated: false,
+      routeId: null,
 
       // Quản lý đồng bộ
       syncProgress: 0,
@@ -61,6 +63,12 @@ const store = createStore({
     },
     SET_HYDRATED(state, data) {
       state.isHydrated = data
+    },
+    SET_ROUTE_ID(state, id) {
+      state.routeId = id
+    },
+    SET_DATA_REPORT_NOTE_CATEGORY(state, data) {
+      state.dataReportNoteCategory = data
     },
     SET_NETWORK_STATUS(state, status) {
       state.isOnline = status;
@@ -132,11 +140,13 @@ const store = createStore({
       state.dataCheckpointsId = []
       state.dataAreaBU = []
       state.dataListRoute = []
+      state.dataReportNoteCategory = []
       state.dataUser = null
       state.dataScanQr = null
       state.token = null
       state.currentTime = null
       state.isHydrated = false
+      state.routeId = null
       state.syncProgress = 0
       state.syncMessage = ''
       state.isSyncing = false
@@ -155,6 +165,7 @@ const store = createStore({
         { name: 'CheckPointsId', key: 'checkpoints_id', isLarge: false, mutation: 'SET_DATA_CHECKPOINTS_ID' },
         { name: 'AreaBU', key: 'area_bu', isLarge: false, mutation: 'SET_DATA_AREA_BU' },
         { name: 'ListRoute', key: 'list_route', isLarge: false, mutation: 'SET_DATA_LIST_ROUTE' },
+        { name: 'ReportNoteCategory', key: 'report_note_category', isLarge: false, mutation: 'SET_DATA_REPORT_NOTE_CATEGORY' },
       ];
 
       commit('SET_SYNC_STATUS', { progress: 0, message: 'Khởi động đồng bộ...', isSyncing: true });
@@ -221,7 +232,9 @@ const store = createStore({
           dispatch('restoreCheckpoints'),
           dispatch('restoreCheckpointsId'),
           dispatch('restoreAreaBU'),
-          dispatch('restoreListRoute')
+          dispatch('restoreListRoute'),
+          dispatch('restoreRouteId'),
+          dispatch('restoreReportNoteCategory')
         ]);
       } catch (e) {
         console.error("Lỗi khi khởi tạo Store:", e);
@@ -284,6 +297,25 @@ const store = createStore({
           commit('SET_DATA_AREA_BU', actualData);
           // THÊM DÒNG NÀY ĐỂ CHỨNG MINH DỮ LIỆU ĐÃ LÊN VUEX THÀNH CÔNG
           console.log('✅ ĐÃ BƠM AREA_BU VÀO VUEX:', actualData);
+        }
+      }
+    },
+
+    async restoreReportNoteCategory({ commit, state }) {
+      if (!state.dataReportNoteCategory || state.dataReportNoteCategory.length === 0) {
+        let response = await storageService.get('report_note_category');
+
+        // Đề phòng SQLite trả về chuỗi JSON thô
+        if (typeof response === 'string') {
+          try { response = JSON.parse(response); } catch (e) { }
+        }
+
+        const actualData = response?.data ? response.data : response;
+
+        if (actualData) {
+          commit('SET_DATA_REPORT_NOTE_CATEGORY', actualData);
+          // THÊM DÒNG NÀY ĐỂ CHỨNG MINH DỮ LIỆU ĐÃ LÊN VUEX THÀNH CÔNG
+          console.log('✅ ĐÃ BƠM REPORT_NOTE_CATEGORY VÀO VUEX:', actualData);
         }
       }
     },
@@ -366,6 +398,13 @@ const store = createStore({
         if (data) commit('SET_CURRENT_CHECKPOINT', data);
       } catch (e) {
         console.error("Error restoring checkpoint:", e);
+      }
+    },
+
+    async restoreRouteId({ commit, state }) {
+      if (!state.routeId) {
+        const data = await storageService.get('current_route_id');
+        if (data) commit('SET_ROUTE_ID', data);
       }
     },
   }

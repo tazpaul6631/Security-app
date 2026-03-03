@@ -62,6 +62,7 @@ import CheckPointScanQr from '@/api/CheckPointScanQr';
 import PointReport from '@/api/PointReport';
 import AreaBU from '@/api/AreaBU';
 import RouteList from '@/api/RouteList';
+import ReportNoteCategory from '@/api/ReportNoteCategory';
 
 const router = useRouter();
 const store = useStore();
@@ -132,6 +133,7 @@ const handleLogin = async () => {
                     checkpoints_id: () => PointReport.postPointReportView(),
                     area_bu: () => AreaBU.postAreaBU(),
                     list_route: () => RouteList.postListRoute(),
+                    report_note_category: () => ReportNoteCategory.getReportNoteCategory(),
                 };
                 await store.dispatch('syncAllData', apiList);
 

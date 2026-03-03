@@ -81,7 +81,7 @@ import {
   IonMenuButton, IonPage, IonToolbar, IonAccordion, IonAccordionGroup,
   IonItem, IonLabel, IonRouterOutlet, IonFooter, IonIcon, IonFabButton,
   alertController, IonGrid, IonRow, IonCol, IonBadge, IonTitle, useIonRouter,
-  loadingController, IonText
+  loadingController, IonText, IonSpinner
 } from '@ionic/vue';
 import { reactive, ref, computed, watch } from 'vue';
 import { qrCodeOutline, exitOutline } from 'ionicons/icons';

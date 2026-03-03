@@ -88,6 +88,7 @@ interface Route {
 }
 
 const nameRoute = ref();
+const selectedIdRoute = ref();
 
 // Lấy dữ liệu an toàn từ store, mặc định là mảng rỗng nếu chưa có data
 const dataListRoute = computed<Route[]>(() => store.state.dataListRoute || []);
@@ -96,6 +97,7 @@ const isAlertOpen = ref(false);
 
 const handleRouteSelected = (id: number, name: string) => {
     console.log(id);
+    selectedIdRoute.value = id;
     nameRoute.value = name;
     isAlertOpen.value = true;
 }
@@ -115,7 +117,7 @@ const alertButtons = [
         text: 'OK',
         role: 'confirm',
         handler: () => {
-            scannerService.startScanning(store, router);
+            scannerService.startScanning(store, router, selectedIdRoute.value);
         },
     },
 ];

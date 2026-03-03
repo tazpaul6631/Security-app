@@ -16,9 +16,15 @@ export const scannerService = {
         await alert.present();
     },
 
-    async startScanning(store: Store<any>, router: Router) {
+    async startScanning(store: Store<any>, router: Router, routeId: number) {
         const now = new Date();
         const currentTimeString = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().slice(0, 19);
+
+        const dataUser = store.state.dataUser;
+        console.log(dataUser.userAreaId);
+
+        store.commit('SET_ROUTE_ID', routeId);
+        await storageService.set('current_route_id', routeId);
 
         const granted = await this.requestPermissions();
         if (!granted) return;
@@ -85,6 +91,10 @@ export const scannerService = {
             }
 
             console.log("📦 Dữ liệu sạch sẽ chuẩn bị đưa vào Vuex:", finalData);
+            if (finalData.areaId !== dataUser.userAreaId) {
+                await this.presentAlert('Lỗi', `Mã QR không đúng khu vực ${dataUser.userAreaCode}, Mã QR đã scan là ${finalData.areaCode} vui lòng scan lại!`);
+                return;
+            }
 
             // 3. Kết quả
             if (finalData) {
