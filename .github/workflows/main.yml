@@ -15,14 +15,15 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22 # Cập nhật phiên bản mới nhất để chạy Capacitor
+          node-version: 22
           cache: 'npm'
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
+          java-version: '21' # Cập nhật để fix lỗi "invalid source release: 21"
           distribution: 'temurin'
+          cache: gradle
 
       - name: Install Dependencies
         run: npm install
