@@ -23,14 +23,15 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: gradle # Tối ưu tốc độ build từ file số 2
 
+      # BƯỚC QUAN TRỌNG: Cài đặt thư viện để có thư mục node_modules
       - name: Install Dependencies
         run: npm install
 
       - name: Build Web Assets (Vue.js)
         run: npm run build
 
+      # BƯỚC QUAN TRỌNG: Đồng bộ plugin SQLite vào project Android
       - name: Sync with Capacitor
         run: npx cap sync android
 
@@ -55,4 +56,3 @@ jobs:
         with:
           name: Security-App-V1
           path: ${{ steps.sign_app.outputs.signedReleaseFile }}
-          retention-days: 7
