@@ -11,35 +11,70 @@
             </ion-toolbar>
         </ion-header>
 
+        <ion-alert :is-open="isCancelAlertOpen" header="Cảnh báo!"
+            message="Bạn có chắc chắn muốn hủy? Toàn bộ dữ liệu đã quét trong lộ trình này sẽ bị mất."
+            :buttons="cancelButtons" @didDismiss="isCancelAlertOpen = false">
+        </ion-alert>
+
         <ion-content>
             <div v-if="dataListRoute.length > 0">
-                <ion-accordion-group expand="inset">
+                <ion-accordion-group :value="String(currentRouteId)" expand="inset">
                     <div v-for="route in dataListRoute" :key="route.routeId">
-                        <ion-accordion :value="String(route.routeId)" v-if="route.areaId === dataUser.userAreaId">
+                        <ion-accordion :value="String(route.routeId)"
+                            v-if="dataUser && route.areaId == dataUser.userAreaId"
+                            :disabled="currentRouteId && currentRouteId != route.routeId">
                             <ion-item slot="header" color="light">
-                                <ion-label><strong class="route-name">{{ route.routeName }}</strong></ion-label>
+                                <ion-label>
+                                    <strong class="route-name" :class="{
+                                        'disable-routeId': currentRouteId && currentRouteId != route.routeId,
+                                        'selected-routeId': currentRouteId && currentRouteId == route.routeId,
+                                    }">{{ route.routeName }}</strong>
+                                </ion-label>
                             </ion-item>
-                            <div class="ion-padding inspection-grid-card" slot="content"
-                                @click="handleRouteSelected(route.routeId, route.routeName)" id="present-alert">
+                            <div class="ion-padding inspection-grid-card" slot="content">
                                 <ion-card-content>
                                     <div class="points-grid">
                                         <div v-for="(point, idx) in route.routeDetails" :key="point.rdId"
                                             class="grid-item-wrapper">
-                                            <div class="point-node">
+                                            <div class="point-node" :class="{
+                                                'done': point.status === 1,
+                                                'next-step': isNextRequired(route.routeDetails, idx)
+                                            }">
                                                 <div class="mini-thumb">
-                                                    <img :src="`https://picsum.photos/200?sig=${point.cpId}`" />
+                                                    <ion-icon class="points-icon" :icon="libraryOutline"></ion-icon>
                                                     <div v-if="point.status === 1" class="check-icon">
                                                         <ion-icon :icon="checkmark"></ion-icon>
                                                     </div>
                                                 </div>
                                                 <span class="point-number">{{ idx + 1 }}</span>
                                             </div>
-
                                             <div v-if="(idx + 1) % 4 !== 0 && idx !== route.routeDetails.length - 1"
-                                                class="h-line">
+                                                class="h-line" :class="{ 'active': point.status === 1 }">
                                             </div>
-
                                             <div class="point-label">{{ point.cpName }}</div>
+                                        </div>
+                                    </div>
+
+                                    <div class="route-actions-bar">
+                                        <ion-button v-if="!currentRouteId" expand="block" color="primary"
+                                            @click="handleRouteSelected(route.routeId, route.routeName)">
+                                            <ion-icon slot="start" :icon="playOutline"></ion-icon>
+                                            BẮT ĐẦU LỘ TRÌNH
+                                        </ion-button>
+
+                                        <div v-if="currentRouteId == route.routeId" class="active-controls">
+                                            <ion-button fill="outline" color="danger" @click="confirmCancelRoute"
+                                                class="btn-cancel">
+                                                <ion-icon slot="start" :icon="trashOutline"></ion-icon>
+                                                HỦY BỎ
+                                            </ion-button>
+
+                                            <ion-button color="success"
+                                                @click="scannerService.startScanning(store, router, route.routeId)"
+                                                class="btn-continue">
+                                                <ion-icon slot="start" :icon="qrCodeOutline"></ion-icon>
+                                                QUÉT TIẾP
+                                            </ion-button>
                                         </div>
                                     </div>
                                 </ion-card-content>
@@ -63,10 +98,10 @@
 import { scannerService } from '@/services/scanner.service';
 import {
     IonPage, IonHeader, IonToolbar, IonTitle, IonIcon, IonButtons, IonBackButton,
-    IonCard, IonCardHeader, IonCardTitle, IonCardContent, IonContent, IonBadge,
-    IonAccordion, IonAccordionGroup, IonItem, IonLabel, IonAlert
+    IonCardContent, IonContent, IonAccordion, IonAccordionGroup, IonItem, IonLabel,
+    IonAlert, IonButton
 } from '@ionic/vue';
-import { checkmark } from 'ionicons/icons';
+import { checkmark, libraryOutline, qrCodeOutline, trashOutline, playOutline } from 'ionicons/icons';
 import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useStore } from 'vuex';
@@ -88,25 +123,30 @@ interface Route {
 }
 
 const nameRoute = ref();
-const selectedIdRoute = ref();
+const selectedRouteId = ref();
 
 // Lấy dữ liệu an toàn từ store, mặc định là mảng rỗng nếu chưa có data
-const dataListRoute = computed<Route[]>(() => store.state.dataListRoute || []);
+const dataListRoute = computed<Route[]>(() => store.state.dataListRoute);
+console.log(dataListRoute);
+
 const dataUser = computed(() => store.state.dataUser);
 const isAlertOpen = ref(false);
 
+// Lấy ID lộ trình đang thực hiện từ store
+const currentRouteId = computed(() => store.state.routeId);
+
 const handleRouteSelected = (id: number, name: string) => {
     console.log(id);
-    selectedIdRoute.value = id;
+    selectedRouteId.value = id;
     nameRoute.value = name;
     isAlertOpen.value = true;
 }
-// Hàm kiểm tra index hiện tại (tùy biến theo logic của bạn)
-// const isCurrent = (idx: number, details: RouteDetail[]) => {
-//     if (!details) return false;
-//     const firstIncomplete = details.findIndex(p => p.status === 0);
-//     return idx === (firstIncomplete === -1 ? 0 : firstIncomplete);
-// };
+
+const isNextRequired = (details: RouteDetail[], index: number) => {
+    // Tìm điểm đầu tiên trong mảng có status !== 1
+    const nextIndex = details.findIndex(p => p.status !== 1);
+    return index === nextIndex;
+}
 
 const alertButtons = [
     {
@@ -117,9 +157,34 @@ const alertButtons = [
         text: 'OK',
         role: 'confirm',
         handler: () => {
-            scannerService.startScanning(store, router, selectedIdRoute.value);
+            scannerService.startScanning(store, router, selectedRouteId.value);
         },
     },
+];
+
+// Thêm biến quản lý Alert Hủy
+const isCancelAlertOpen = ref(false);
+
+// Hàm mở cảnh báo
+const confirmCancelRoute = () => {
+    isCancelAlertOpen.value = true;
+};
+
+// Cấu hình các nút cho Alert
+const cancelButtons = [
+    {
+        text: 'Đóng',
+        role: 'cancel'
+    },
+    {
+        text: 'Đồng ý hủy',
+        role: 'confirm',
+        cssClass: 'alert-button-confirm',
+        handler: () => {
+            // Gọi action trong store mà ta vừa viết ở trên
+            store.dispatch('resetCurrentRoute');
+        }
+    }
 ];
 </script>
 
@@ -132,10 +197,6 @@ ion-toolbar {
     background-color: #FFF7ED;
     border-radius: 0 0 12px 12px;
     margin-bottom: 12px;
-}
-
-.route-name {
-    color: #05DF72;
 }
 
 .points-grid {
@@ -174,7 +235,13 @@ ion-toolbar {
     box-shadow: 0 0 8px rgba(56, 128, 255, 0.4);
 }
 
+.points-icon {
+    width: 80%;
+    height: 100%;
+}
+
 .mini-thumb {
+    text-align: center;
     width: 100%;
     height: 100%;
     border-radius: 6px;
@@ -193,18 +260,6 @@ ion-toolbar {
     opacity: 1;
 }
 
-.check-icon {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background: white;
-    border-radius: 50%;
-    color: var(--ion-color-success);
-    display: flex;
-    font-size: 16px;
-}
-
 .point-number {
     position: absolute;
     bottom: -6px;
@@ -221,14 +276,64 @@ ion-toolbar {
     background: var(--ion-color-primary);
 }
 
+/* Hiệu ứng nhấp nháy cho điểm cần quét tiếp theo */
+.point-node.next-step {
+    border-color: var(--ion-color-warning);
+    border-style: dashed;
+    animation: pulse-orange 2s infinite;
+}
+
+@keyframes pulse-orange {
+    0% {
+        box-shadow: 0 0 0 0 rgba(255, 152, 0, 0.7);
+        transform: scale(1);
+    }
+
+    70% {
+        box-shadow: 0 0 0 10px rgba(255, 152, 0, 0);
+        transform: scale(1.05);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(255, 152, 0, 0);
+        transform: scale(1);
+    }
+}
+
+/* Mặc định Node chưa xong thì nên có màu xám nhẹ thay vì xanh success */
+.point-node {
+    width: 45px;
+    height: 45px;
+    position: relative;
+    border-radius: 10px;
+    padding: 2px;
+    border: 2px solid #ddd;
+    /* Đổi từ success sang xám */
+    transition: all 0.3s;
+    background: white;
+}
+
+/* Chỉ khi xong mới hiện viền xanh */
+.point-node.done {
+    border-color: var(--ion-color-success);
+    border-style: solid;
+}
+
 .h-line {
-    background: var(--ion-color-success);
+    background: #ddd;
+    /* Mặc định màu xám */
     position: absolute;
     top: 22px;
     right: -25%;
     width: 37%;
     height: 2px;
     z-index: 0;
+    transition: background 0.5s;
+}
+
+/* Thêm class active cho đường nối */
+.h-line.active {
+    background: var(--ion-color-success);
 }
 
 .point-label {
@@ -257,5 +362,86 @@ ion-toolbar {
     gap: 15px 8px;
     /* Tăng khoảng cách giữa các hàng */
     padding: 10px 5px;
+}
+
+ion-footer {
+    padding: 10px;
+    background: transparent;
+}
+
+ion-toolbar {
+    --border-radius: 15px;
+    box-shadow: 0 -4px 10px rgba(0, 0, 0, 0.1);
+}
+
+/* Hiệu ứng nhấn cho nút footer */
+.footer-scan-container:active {
+    opacity: 0.7;
+    transform: scale(0.98);
+}
+
+/* Làm mờ các lộ trình bị khóa */
+ion-accordion[disabled] {
+    opacity: 0.5;
+    pointer-events: none;
+    /* Ngăn chặn mọi tương tác click */
+}
+
+/* Nhấn mạnh lộ trình đang thực hiện */
+ion-accordion:not([disabled]) .selected-routeId {
+    color: var(--ion-color-success);
+    font-weight: bold;
+}
+
+ion-accordion:not([disabled]) .disable-routeId {
+    color: black;
+}
+
+.route-name {
+    color: black;
+}
+
+/* Thêm badge "Đang thực hiện" vào tiêu đề lộ trình đang chạy (Tùy chọn) */
+.active-badge {
+    display: block;
+    width: fit-content;
+    --padding-start: 8px;
+    --padding-end: 8px;
+}
+
+.route-actions-bar {
+    margin-top: 20px;
+    padding-top: 15px;
+    border-top: 1px dashed #ddd;
+}
+
+.active-controls {
+    display: flex;
+    gap: 10px;
+    justify-content: space-between;
+}
+
+.active-controls ion-button {
+    flex: 1;
+    margin: 0;
+    --border-radius: 8px;
+    font-weight: bold;
+    font-size: 13px;
+}
+
+.btn-cancel {
+    --border-width: 1.5px;
+}
+
+/* Hiệu ứng cho nút bắt đầu */
+.route-actions-bar ion-button[expand="block"] {
+    --border-radius: 8px;
+    height: 45px;
+    font-weight: bold;
+}
+
+/* Chỉnh lại padding của card content để không bị chật */
+.inspection-grid-card ion-card-content {
+    padding: 15px 10px;
 }
 </style>

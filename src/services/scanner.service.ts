@@ -1,9 +1,9 @@
 import { BarcodeScanner } from '@capacitor-mlkit/barcode-scanning';
-import { alertController } from '@ionic/vue';
 import { Store } from 'vuex';
 import { Router } from 'vue-router';
 import storageService from '@/services/storage.service';
 import CheckPointScanQr from '@/api/CheckPointScanQr';
+import presentAlert from '@/mixins/presentAlert';
 
 export const scannerService = {
     async requestPermissions() {
@@ -11,20 +11,23 @@ export const scannerService = {
         return camera === 'granted' || camera === 'limited';
     },
 
-    async presentAlert(h: string, m: string) {
-        const alert = await alertController.create({ header: h, message: m, buttons: ['OK'] });
-        await alert.present();
-    },
-
     async startScanning(store: Store<any>, router: Router, routeId: number) {
         const now = new Date();
         const currentTimeString = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().slice(0, 19);
 
         const dataUser = store.state.dataUser;
-        console.log(dataUser.userAreaId);
+        const dataListRoute = store.state.dataListRoute;
 
+        // Lưu routeId đang thực hiện vào store/storage
         store.commit('SET_ROUTE_ID', routeId);
         await storageService.set('current_route_id', routeId);
+
+        // 1. Tìm lộ trình cụ thể mà người dùng đã chọn
+        const currentRoute = dataListRoute.find((r: any) => r.routeId === routeId);
+        if (!currentRoute) {
+            await presentAlert.presentAlert('Lỗi', 'Không tìm thấy thông tin lộ trình đã chọn.');
+            return;
+        }
 
         const granted = await this.requestPermissions();
         if (!granted) return;
@@ -39,19 +42,39 @@ export const scannerService = {
             try {
                 const url = new URL(urlString);
                 const segments = url.pathname.split('/');
-                listScanQr.cpwId = segments[3];
+                listScanQr.cpwId = segments[3];   // ID của checkpoint từ QR
                 listScanQr.cpwCode = segments[4];
             } catch (e) {
-                await this.presentAlert('Lỗi', 'Mã QR không hợp lệ');
+                await presentAlert.presentAlert('Lỗi', 'Mã QR không hợp lệ');
                 return;
             }
         }
+
+        // --- BẮT ĐẦU LOGIC KIỂM TRA LỘ TRÌNH ---
+        // 1. Tìm điểm tiếp theo cần phải quét (Điểm đầu tiên có status khác 1)
+        const nextPointRequired = currentRoute.routeDetails.find((point: any) => point.status !== 1);
+
+        if (!nextPointRequired) {
+            await presentAlert.presentAlert('Thông báo', 'Lộ trình này đã được hoàn thành tất cả các điểm.');
+            return;
+        }
+
+        // 2. Kiểm tra ID quét được có khớp với ID của điểm tiếp theo bắt buộc không
+        if (String(listScanQr.cpwId) !== String(nextPointRequired.cpId)) {
+            await presentAlert.presentAlert(
+                'Sai thứ tự tuần tra',
+                `Bạn cần quét điểm tiếp theo là: <b class="highlight-point">${nextPointRequired.cpName}</b>.<br><br>Vui lòng đi đúng lộ trình.`,
+                'custom-error-alert' // Thêm định danh class ở đây
+            );
+            return; // Chặn lại, không cho đi tiếp trang create nếu sai thứ tự
+        }
+        // --- KẾT THÚC LOGIC KIỂM TRA LỘ TRÌNH ---
 
         try {
             let finalData = null;
             const isOnline = store.state.isOnline;
 
-            // 1. Xử lý Online
+            // Xử lý lấy dữ liệu Online/Offline (giữ nguyên logic cũ của bạn)
             if (isOnline) {
                 try {
                     const res = await CheckPointScanQr.getCheckPointScanQr(listScanQr);
@@ -59,58 +82,38 @@ export const scannerService = {
                     if (Array.isArray(actualData)) actualData = actualData[0];
                     if (actualData) {
                         finalData = actualData;
-                        // Lưu dự phòng riêng cho ID này
                         await storageService.set(`checkpoint_${listScanQr.cpwId}`, actualData);
                     }
                 } catch (e) {
-                    console.warn("API lỗi hoặc timeout, tự động kiểm tra kho Offline");
+                    console.warn("API lỗi, kiểm tra kho Offline");
                 }
             }
 
-            // 2. Xử lý Offline (Tìm trong kho tổng từ App.vue)
             if (!finalData) {
-                console.log('🔌 Trạng thái OFFLINE: Đang tìm Checkpoint trong kho tổng...');
-
                 let response = await storageService.get('checkpoints');
-                let allCheckpoints = [];
-
-                if (Array.isArray(response)) {
-                    allCheckpoints = response;
-                } else if (response && Array.isArray(response.data)) {
-                    allCheckpoints = response.data;
-                }
-
-                const foundItem = allCheckpoints.find(
-                    (item: any) => String(item.cpId) === String(listScanQr.cpwId)
-                );
-
-                if (foundItem) {
-                    finalData = foundItem; // 🚀 BỎ LUÔN VỤ BỌC { data: foundItem }. Gán thẳng cái lõi!
-                    console.log('✅ Đã lấy FULL DATA Offline thành công:', finalData);
-                }
+                let allCheckpoints = Array.isArray(response) ? response : (response?.data || []);
+                finalData = allCheckpoints.find((item: any) => String(item.cpId) === String(listScanQr.cpwId));
             }
 
-            console.log("📦 Dữ liệu sạch sẽ chuẩn bị đưa vào Vuex:", finalData);
-            if (finalData.areaId !== dataUser.userAreaId) {
-                await this.presentAlert('Lỗi', `Mã QR không đúng khu vực ${dataUser.userAreaCode}, Mã QR đã scan là ${finalData.areaCode} vui lòng scan lại!`);
-                return;
-            }
-
-            // 3. Kết quả
             if (finalData) {
+                // Kiểm tra AreaId (giữ nguyên logic của bạn)
+                if (finalData.areaId !== dataUser.userAreaId) {
+                    await presentAlert.presentAlert('Lỗi', `Mã QR không đúng khu vực!`);
+                    return;
+                }
+
                 store.commit('SET_DATASCANQR', finalData);
                 await storageService.set('data_scanqr', finalData);
                 await storageService.set('currentTime_scanqr', currentTimeString);
 
-                // Đợi Camera đóng hẳn rồi mới chuyển trang
                 setTimeout(() => {
                     router.replace('/checkpoint/create');
                 }, 100);
             } else {
-                await this.presentAlert('Thông báo', 'Không tìm thấy thông tin điểm này. Hãy đồng bộ dữ liệu khi có mạng.');
+                await presentAlert.presentAlert('Thông báo', 'Không tìm thấy thông tin điểm này trong dữ liệu hệ thống.');
             }
         } catch (error) {
-            await this.presentAlert('Lỗi', 'Hệ thống không thể xử lý mã quét.');
+            await presentAlert.presentAlert('Lỗi', 'Hệ thống không thể xử lý mã quét.');
         }
     }
 };

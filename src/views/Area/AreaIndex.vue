@@ -119,6 +119,7 @@ import { documentOutline, warningOutline } from "ionicons/icons";
 import { computed, ref, nextTick, watch } from 'vue';
 import { useStore } from 'vuex';
 import { useRoute } from 'vue-router';
+import presentAlert from '@/mixins/presentAlert';
 
 // Theo dõi mỗi khi đường dẫn thay đổi
 onIonViewWillEnter(async () => {
@@ -375,7 +376,7 @@ const handleSelectionChange = async (event: any) => {
             store.commit('SET_DATACP', [reportData]);
         } catch (e) {
             console.error("❌ Lỗi điều hướng Menu:", e);
-            presentAlert('Lỗi', 'Đã có lỗi xảy ra khi mở khu vực này.');
+            presentAlert.presentAlert('Lỗi', 'Đã có lỗi xảy ra khi mở khu vực này.');
         } finally {
             // Load xong thì tắt đi để hiện danh sách thật
             isLoading.value = false;
@@ -466,11 +467,6 @@ const handleSelectedRow = async (prId: number) => {
         });
         await alert.present();
     }
-};
-
-const presentAlert = async (h: string, m: string) => {
-    const alert = await alertController.create({ header: h, message: m, buttons: ['OK'] });
-    await alert.present();
 };
 </script>
 

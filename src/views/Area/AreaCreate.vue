@@ -3,7 +3,9 @@
     <ion-header>
       <ion-toolbar>
         <ion-buttons slot="start">
-          <ion-back-button default-href="/route"></ion-back-button>
+          <ion-button @click="handleGoBack">
+            <ion-icon slot="icon-only" :icon="arrowBackOutline"></ion-icon>
+          </ion-button>
         </ion-buttons>
         <ion-title>CheckPoint Create</ion-title>
       </ion-toolbar>
@@ -28,12 +30,14 @@
                 'next-step': isCurrentStep(idx)
               }">
                 <div class="mini-thumb">
-                  <img :src="`https://picsum.photos/200?sig=${point.cpId}`" />
+                  <ion-icon class="points-icon" :icon="libraryOutline"></ion-icon>
                   <div v-if="point.status === 1" class="check-icon">
                     <ion-icon :icon="checkmark"></ion-icon>
                   </div>
                 </div>
-                <span class="point-number">{{ idx + 1 }}</span>
+                <span class="point-number" :class="{
+                  'done': point.status === 1
+                }">{{ idx + 1 }}</span>
               </div>
 
               <div v-if="(idx + 1) % 4 !== 0 && idx !== (currentRoute?.routeDetails?.length ?? 0) - 1" class="h-line"
@@ -88,11 +92,6 @@
               </ion-checkbox>
             </ion-item>
 
-            <!-- <ion-item>
-              <ion-textarea label="Ghi chú thêm" label-placement="floating" v-model="formData.prNote"
-                :rows="3"></ion-textarea>
-            </ion-item> -->
-
             <div v-if="formData.prHasProblem">
               <ion-item>
                 <ion-card-header class="pad-0">
@@ -132,7 +131,7 @@
                       </ion-accordion>
                     </ion-accordion-group>
 
-                    <div class="ion-padding-top" v-if="selectedPcccLabels.length > 0">
+                    <div class="ion-padding-top" v-if="selectedPcccLabels.length > 0 || tempNoteList.length > 0">
                       <ion-label color="medium">
                         <p>Đã chọn:</p>
                       </ion-label>
@@ -142,12 +141,10 @@
                           <ion-icon :icon="trash" @click.stop="removeItem(label)"></ion-icon>
                         </ion-chip>
 
-                        <template v-if="tempNoteList.length > 0">
-                          <ion-chip v-for="(note, nIdx) in tempNoteList" :key="'note-' + nIdx" color="warning">
-                            <ion-label>Note: {{ note }}</ion-label>
-                            <ion-icon :icon="trash" @click.stop="clearNote(nIdx)"></ion-icon>
-                          </ion-chip>
-                        </template>
+                        <ion-chip v-for="(note, nIdx) in tempNoteList" :key="'note-' + nIdx" color="warning">
+                          <ion-label>Note: {{ note }}</ion-label>
+                          <ion-icon :icon="trash" @click.stop="clearNote(nIdx)"></ion-icon>
+                        </ion-chip>
                       </div>
                     </div>
                   </ion-content>
@@ -157,9 +154,9 @@
                   <ion-header>
                     <ion-toolbar>
                       <ion-title>{{ selectedSubCategory?.rncName || 'CHI TIẾT' }}</ion-title>
-                      <ion-buttons slot="end">
+                      <!-- <ion-buttons slot="end">
                         <ion-button @click="openDetailModal = false">Xong</ion-button>
-                      </ion-buttons>
+                      </ion-buttons> -->
                     </ion-toolbar>
                   </ion-header>
                   <ion-content class="ion-padding">
@@ -167,7 +164,7 @@
                       <ion-item>
                         <ion-select label="Lỗi phát hiện" label-placement="floating" :multiple="true"
                           v-model="selectedValues" @ionChange="handleDetailChange($event)"
-                          placeholder="Chọn các lỗi...">
+                          @ionDismiss="handleSelectDismiss" placeholder="Chọn các lỗi...">
 
                           <ion-select-option v-for="issue in currentIssues" :key="issue.rncId" :value="issue.rncName">
                             {{ issue.rncName }}
@@ -281,10 +278,11 @@ import {
   IonCheckbox, IonButton, IonIcon, IonCard, IonCardHeader, IonCardTitle, IonCardSubtitle,
   IonCardContent, IonGrid, IonRow, IonCol, IonImg, IonLabel, IonItemSliding,
   IonItemOptions, IonItemOption, IonListHeader, loadingController, onIonViewWillEnter,
-  IonSpinner, toastController, IonBadge, IonThumbnail, IonBackButton, IonButtons,
-  IonSelect, IonModal, IonSelectOption, IonChip, IonAccordion, IonAccordionGroup
+  IonSpinner, toastController, IonBadge, IonThumbnail, IonButtons,
+  IonSelect, IonModal, IonSelectOption, IonChip, IonAccordion, IonAccordionGroup,
+  alertController
 } from '@ionic/vue';
-import { sendOutline, camera, images, trash } from 'ionicons/icons';
+import { sendOutline, camera, images, trash, libraryOutline, arrowBackOutline } from 'ionicons/icons';
 import { Camera, CameraResultType, CameraDirection, CameraSource } from '@capacitor/camera';
 import { useStore } from 'vuex';
 import { cloudOfflineOutline, trashOutline } from 'ionicons/icons';
@@ -294,6 +292,8 @@ import { ImageService } from '@/services/image.service';
 import router from '@/router';
 import storageService from '@/services/storage.service';
 import { checkmark } from 'ionicons/icons';
+import { onBeforeRouteLeave } from 'vue-router';
+import { App } from '@capacitor/app';
 
 const store = useStore();
 const isReady = ref(false);
@@ -317,13 +317,16 @@ interface Route {
 // 1. Lấy ID route từ store
 const currentRouteId = computed(() => store.state.routeId);
 
-// 2. Tìm Route hiện tại
+// Tìm Route hiện tại từ danh sách lộ trình trong store
 const currentRoute = computed<Route | null>(() => {
   const routes = store.state.dataListRoute || [];
-  return routes.find((r: any) => r.routeId === currentRouteId.value) || null;
+  const selectedId = store.state.routeId;
+  if (!selectedId) return null;
+  // Dùng == để so sánh linh hoạt giữa string và number
+  return routes.find((r: any) => r.routeId == selectedId) || null;
 });
 
-// 3. Highlight điểm vừa quét (Dùng cho class 'current')
+// Kiểm tra xem một điểm (cpId) có phải là điểm VỪA QUÉT được không
 const isPointActive = (cpId: number | string) => {
   if (!dataScanQr.value) return false;
   return String(cpId) === String(dataScanQr.value.cpId);
@@ -396,24 +399,6 @@ const listImages = computed(() => {
 ////////////////////////////////////////////////////
 
 ////////////////////////////////////////////
-onMounted(async () => {
-  // BƯỚC 1: Khôi phục dữ liệu từ SQLite vào Vuex nếu lỡ F5
-  if (!store.state.isHydrated) {
-    await store.dispatch('initApp');
-  }
-
-  // BƯỚC 2: Load các dữ liệu báo cáo offline đang chờ đồng bộ
-  await loadPendingItemsWithImages();
-
-  // BƯỚC 3: Bật đèn xanh cho UI render
-  isReady.value = true;
-});
-
-onIonViewWillEnter(() => {
-  formData.prNote = '';
-  formData.prHasProblem = false;
-  photos.value = []; // Quét sạch "ảnh ma" từ lần quét trước
-});
 
 // Toast thông báo gửi submit
 const showToast = async (message: string, color: string = 'success') => {
@@ -439,7 +424,12 @@ const formData = reactive({
 
 // Kiểm tra checked
 const handleChecked = () => {
-  if (!formData.prHasProblem) photos.value = []
+  if (!formData.prHasProblem) {
+    photos.value = [];
+    allSelectedMap.value = {};
+    tempNoteList.value = [];
+    selectedValues.value = [];
+  }
 }
 
 // ==========================================
@@ -568,37 +558,119 @@ const handleSubmit = async (): Promise<void> => {
     const userId = actualUser?.userId || '';
 
     const currentTime_scanQr = await storageService.get('currentTime_scanqr')
+    const currentCpId = dataScanQr.value.cpId;
+
+    const routeId = await storageService.get('current_route_id');
+
+    // Tìm rdId từ lộ trình hiện tại
+    const currentDetail = currentRoute.value?.routeDetails.find(
+      (d: any) => String(d.cpId) === String(currentCpId)
+    );
+    const rdId = currentDetail?.rdId || '';
 
     const formSubmitData = {
+      routeId: routeId,
+      rdId: rdId,
       createdAt: currentTimeString,
       prHasProblem: formData.prHasProblem,
       prNote: formData.prNote,
-      cpId: dataScanQr.value.cpId,
+      cpId: currentCpId,
       createdBy: userId,
       scanAt: currentTime_scanQr,
       images: formData.prHasProblem ? mapImages : []
     };
 
+    // 1. Gửi dữ liệu (Online hoặc lưu Offline vào hàng chờ)
     await sendData(photos.value[0]?.preview, formSubmitData, base64ImagesOnly);
+
+    // 2. Cập nhật trạng thái lộ trình trong Store
+    const updatedRoutes = [...store.state.dataListRoute];
+    const routeIndex = updatedRoutes.findIndex(r => r.routeId == currentRouteId.value);
+
+    if (routeIndex !== -1) {
+      const details = updatedRoutes[routeIndex].routeDetails;
+      const cpIndex = details.findIndex((cp: any) => String(cp.cpId) === String(dataScanQr.value.cpId));
+
+      if (cpIndex !== -1) {
+        // Đánh dấu điểm vừa quét là Hoàn thành (status = 1)
+        details[cpIndex].status = 1;
+
+        // Kiểm tra xem đã xong HẾT lộ trình chưa
+        const allDone = details.every((p: any) => p.status === 1);
+
+        if (allDone) {
+          await showToast('Chúc mừng! Bạn đã hoàn thành toàn bộ lộ trình.', 'success');
+
+          // Reset lộ trình về 0 để ca sau làm lại
+          details.forEach((p: any) => p.status = 0);
+
+          // Xóa dữ liệu quét và ID lộ trình vì đã kết thúc vòng tuần tra
+          store.commit('SET_DATASCANQR', null);
+          store.commit('SET_ROUTE_ID', null);
+          await storageService.remove('current_route_id');
+
+          // Lưu lại bản sạch xuống storage
+          store.commit('SET_DATA_LIST_ROUTE', updatedRoutes);
+          await storageService.set('list_route', updatedRoutes);
+
+          await loading.dismiss();
+          // Xong hết thì về Home
+          router.replace({ path: '/home' });
+        } else {
+          // CHƯA XONG HẾT: Lưu tiến độ và quay về trang Route để quét tiếp
+          store.commit('SET_DATA_LIST_ROUTE', updatedRoutes);
+          await storageService.set('list_route', updatedRoutes);
+
+          // Lưu ý: KHÔNG gọi SET_DATASCANQR null ở đây để tránh lỗi UI 
+          // (Nó sẽ tự bị đè khi bạn quét điểm tiếp theo)
+
+          await loading.dismiss();
+          await showToast(`Đã xong điểm ${details[cpIndex].cpName}. Hãy di chuyển đến điểm tiếp theo!`, 'primary');
+
+          // Quay về trang Lộ trình để nhân viên thấy Grid cập nhật màu xanh
+          router.replace({ path: '/route' });
+        }
+      }
+    }
 
     // RESET FORM
     formData.prNote = '';
     formData.prHasProblem = false;
     photos.value = [];
-
-    store.commit('SET_DATASCANQR', null);
     await storageService.remove('currentTime_scanqr');
-
     await loadPendingItemsWithImages();
-    await loading.dismiss();
 
-    if (!isSyncing) await showToast('Đã lưu dữ liệu thành công!', 'success');
-
-    router.replace({ path: '/home' })
   } catch (error) {
     await loading.dismiss();
     console.error("Gửi dữ liệu thất bại:", error);
     await showToast('Có lỗi xảy ra khi lưu dữ liệu', 'danger');
+  }
+};
+
+const handleGoBack = async () => {
+  // Lấy danh sách chi tiết của lộ trình hiện tại
+  const details = currentRoute.value?.routeDetails || [];
+
+  // Nếu lộ trình trống (vừa vào hoặc lỗi data) thì cho về luôn
+  if (details.length === 0) {
+    router.replace('/route');
+    return;
+  }
+
+  // Kiểm tra xem tất cả các điểm đã được quét (status === 1) chưa
+  const isFinished = details.every(p => p.status === 1);
+
+  if (isFinished) {
+    // Nếu đã xong hết, cho phép về trang danh sách lộ trình
+    router.replace('/route');
+  } else {
+    const alert = await alertController.create({
+      header: 'Cảnh báo',
+      message: 'Bạn phải hoàn thành toàn bộ lộ trình trước khi quay lại!',
+      buttons: ['Đã hiểu']
+    });
+    await alert.present();
+    return;
   }
 };
 
@@ -719,6 +791,14 @@ const handleDetailChange = (event: any) => {
   syncToMainForm();
 };
 
+const handleSelectDismiss = () => {
+  setTimeout(() => {
+    if (!openNoteModal.value) {
+      openDetailModal.value = false;
+    }
+  }, 100); // Delay một chút để logic check 'note' kịp chạy
+};
+
 const confirmNote = () => {
   if (tempNoteInput.value.trim()) {
     // Thêm ghi chú mới vào mảng
@@ -728,6 +808,7 @@ const confirmNote = () => {
     tempNoteInput.value = '';
   }
   openNoteModal.value = false;
+  openDetailModal.value = false;
   syncToMainForm();
 };
 
@@ -780,9 +861,15 @@ const syncToMainForm = () => {
 };
 
 onMounted(async () => {
-  // ... các bước hiện tại của bạn ...
+  // Khôi phục dữ liệu từ SQLite vào Vuex nếu lỡ F5
+  if (!store.state.isHydrated) {
+    await store.dispatch('initApp');
+  }
 
-  // BƯỚC 4: Gán dữ liệu danh mục từ Store vào ref
+  // Load các dữ liệu báo cáo offline đang chờ đồng bộ
+  await loadPendingItemsWithImages();
+
+  // Gán dữ liệu danh mục từ Store vào ref
   const categoryData = store.state.dataReportNoteCategory;
 
   if (categoryData) {
@@ -796,8 +883,29 @@ onMounted(async () => {
   }
 
   isReady.value = true;
+
+  App.addListener('backButton', () => {
+    handleGoBack(); // Ép nút back cứng cũng phải chạy qua logic kiểm tra này
+  });
 });
 /////////////////////////////////////////////
+
+// --- LOGIC 1: CHẶN THOÁT TRANG ---
+onBeforeRouteLeave((to, from, next) => {
+  const details = currentRoute.value?.routeDetails || [];
+  const isFinished = details.every(p => p.status === 1);
+
+  // Nếu đã hoàn thành hết hoặc người dùng cố tình quay lại trang /route (để chọn lộ trình mới)
+  // Bạn có thể tùy chỉnh: cho phép thoát nếu về /home nhưng chặn nếu chưa xong
+  if (isFinished || to.path === '/route') {
+    next();
+  } else {
+    // Hiện thông báo nhắc nhở
+    showToast('Bạn phải hoàn thành toàn bộ lộ trình trước khi rời đi!', 'warning');
+    next(false); // Chặn không cho chuyển trang
+  }
+});
+//////////////////////////////////////
 </script>
 
 <style scoped>
@@ -908,8 +1016,8 @@ ion-list-header {
 }
 
 .header-badge {
-  padding: 13px;
-  font-size: 17px;
+  width: fit-content;
+  font-size: 10px;
   margin-bottom: 15px;
 }
 
@@ -955,7 +1063,13 @@ ion-list-header {
   box-shadow: 0 0 8px rgba(56, 128, 255, 0.4);
 }
 
+.points-icon {
+  width: 80%;
+  height: 100%;
+}
+
 .mini-thumb {
+  text-align: center;
   width: 100%;
   height: 100%;
   border-radius: 6px;
@@ -998,22 +1112,80 @@ ion-list-header {
   border: 1px solid white;
 }
 
+.point-number.done {
+  background: var(--ion-color-success);
+}
+
 .point-node.current .point-number {
   background: var(--ion-color-primary);
 }
 
+/* Hiệu ứng nhấp nháy cho điểm cần quét tiếp theo */
+.point-node.next-step {
+  border-color: var(--ion-color-warning);
+  border-style: dashed;
+  animation: pulse-orange 2s infinite;
+}
+
+@keyframes pulse-orange {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 152, 0, 0.7);
+    transform: scale(1);
+  }
+
+  70% {
+    box-shadow: 0 0 0 10px rgba(255, 152, 0, 0);
+    transform: scale(1.05);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 152, 0, 0);
+    transform: scale(1);
+  }
+}
+
+/* Mặc định Node chưa xong thì nên có màu xám nhẹ thay vì xanh success */
+.point-node {
+  width: 45px;
+  height: 45px;
+  position: relative;
+  border-radius: 10px;
+  padding: 2px;
+  border: 2px solid #ddd;
+  /* Đổi từ success sang xám */
+  transition: all 0.3s;
+  background: white;
+}
+
+/* Chỉ khi xong mới hiện viền xanh */
+.point-node.done {
+  border-color: var(--ion-color-success);
+  border-style: solid;
+}
+
 .h-line {
+  background: #ddd;
+  /* Mặc định màu xám */
   position: absolute;
   top: 22px;
   right: -25%;
-  width: 40%;
+  width: 37%;
   height: 2px;
-  background: #eee;
   z-index: 0;
+  transition: background 0.5s;
 }
 
+/* Thêm class active cho đường nối */
 .h-line.active {
   background: var(--ion-color-success);
+}
+
+/* Điểm đang đứng tại đó để kiểm tra */
+.point-node.current {
+  border: 2px solid var(--ion-color-warning);
+  /* Màu cam nổi bật */
+  transform: scale(1.1);
+  box-shadow: 0 0 10px rgba(255, 196, 0, 0.5);
 }
 
 .point-label {
@@ -1028,4 +1200,25 @@ ion-list-header {
 }
 
 /** */
+
+ion-chip {
+  --background: var(--ion-color-primary-tint);
+  --color: var(--ion-color-primary-shade);
+  font-weight: 500;
+  font-size: 12px;
+  margin: 2px;
+  animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
 </style>

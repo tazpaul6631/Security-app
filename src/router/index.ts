@@ -6,7 +6,6 @@ import store from '@/composables/useVuex';
 // để tránh lỗi "Failed to fetch dynamically imported module" khi test Offline
 import Nav from '@/components/Nav.vue';
 import HomePage from '@/views/HomePage.vue';
-import CPIndex from '@/views/Area/CPIndex.vue';
 import CPDetail from '@/views/Area/AreaDetail.vue';
 import CPCreate from '@/views/Area/AreaCreate.vue';
 import Login from '@/views/Login/Login.vue';
@@ -21,95 +20,73 @@ import TutorialIndex from '@/views/Tutorial/TutorialIndex.vue';
 const routes: Array<RouteRecordRaw> = [
   {
     path: '/',
-    // CODE CŨ (Lazy Load): component: () => import('@/components/Nav.vue'),
-    component: Nav, // CODE MỚI (Eager Load)
+    component: Nav,
     meta: { requiresAuth: true },
-    // SỬA Ở ĐÂY: Thêm redirect mặc định cho route cha
-    // Nếu không có dòng này, khi vào '/' nó chỉ load Nav.vue mà không load ruột (home), dẫn đến màn hình trống
     redirect: '/home',
     children: [
       {
         path: 'home',
         name: 'home',
-        // CODE CŨ: component: () => import('@/views/HomePage.vue'),
-        component: HomePage, // CODE MỚI
+        component: HomePage,
       },
-      // {
-      //   path: 'checkpoint/:id',
-      //   name: 'checkpoint',
-      //   // CODE CŨ: component: () => import('@/views/Area/CPIndex.vue'),
-      //   component: CPIndex, // CODE MỚI
-      //   props: true,
-      // },
       {
         path: 'checkpoint/detail/:id',
         name: 'checkpoint-detail',
-        // CODE CŨ: component: () => import('@/views/Area/AreaDetail.vue'),
-        component: CPDetail, // CODE MỚI
+        component: CPDetail,
         props: true,
       },
       {
         path: 'checkpoint/create',
         name: 'checkpoint-create',
-        // CODE CŨ: component: () => import('@/views/Area/AreaCreate.vue'),
-        component: CPCreate, // CODE MỚI
+        component: CPCreate,
         props: true,
       },
       {
         path: 'area',
         name: 'area',
-        // CODE CŨ: component: () => import('@/views/Area/AreaIndex.vue'),
-        component: AreaBase, // CODE MỚI
+        component: AreaBase,
       },
       {
         path: 'user',
         name: 'user',
-        // CODE CŨ: component: () => import('@/views/User/UserIndex.vue'),
-        component: UserIndex, // CODE MỚI
+        component: UserIndex,
       },
       {
         path: 'role',
         name: 'role',
-        // CODE CŨ: component: () => import('@/views/Role/RoleIndex.vue'),
-        component: RoleIndex, // CODE MỚI
+        component: RoleIndex,
       },
       {
         path: 'menucategory',
         name: 'menucategory',
-        // CODE CŨ: component: () => import('@/views/MenuCategory/MenuCategoryIndex.vue'),
-        component: MenuCategoryIndex, // CODE MỚI
+        component: MenuCategoryIndex,
       },
       {
         path: 'route',
         name: 'route',
-        // CODE CŨ: component: () => import('@/views/Route/RouteIndex.vue'),
-        component: RouteIndex, // CODE MỚI
+        component: RouteIndex,
       },
       {
         path: 'report',
         name: 'report',
-        // CODE CŨ: component: () => import('@/views/Report/ReportIndex.vue'),
-        component: ReportIndex, // CODE MỚI
+        component: ReportIndex,
       },
       {
         path: 'tutorial',
         name: 'tutorial',
-        // CODE CŨ: component: () => import('@/views/Tutorial/TutorialIndex.vue'),
-        component: TutorialIndex, // CODE MỚI
+        component: TutorialIndex,
       },
     ]
   },
   {
     path: '/login',
     name: 'login',
-    // CODE CŨ: component: () => import('@/views/Login/Login.vue'),
-    component: Login, // CODE MỚI
+    component: Login,
     meta: { requiresAuth: false }
   },
   {
     path: '/:pathMatch(.*)*',
     redirect: to => {
-      // Đảm bảo không bị lỗi loop nếu gõ sai URL
       return store.state.token ? '/home' : '/login';
     }
   }

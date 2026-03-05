@@ -14,10 +14,11 @@ export default {
     console.log(data);
 
     return request.post(`/PointReport/create`, {
+      routeId: data.routeId,
+      rdId: data.rdId,
       prHasProblem: data.prHasProblem,
       createdAt: data.createdAt,
-      prNote: data.prNote,
-      cpId: data.cpId,
+      prNote: data.prNote || 'Không có vấn đề gì',
       createdBy: data.createdBy,
       scanAt: data.scanAt,
       images: data.images

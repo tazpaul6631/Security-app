@@ -83,6 +83,8 @@ export function useOfflineManager() {
     const mockReport = {
       // 1. Lấy luôn item.id (chính là Date.now() dạng số nguyên) làm prId ảo
       prId: item.data.prId || item.id,
+      routeId: item.data.routeId,
+      rdId: item.data.rdId,
       cpId: item.data.cpId,
       cpName: scanData.cpName || item.data.cpCode || 'Khu vực (Đang Offline)',
       areaName: scanData.areaName || '',

@@ -1,2 +1,34 @@
 /* For information on how to create your own theme, please refer to:
 http://ionicframework.com/docs/theming/ */
+/* Tùy chỉnh màu sắc cho Alert lỗi */
+.custom-error-alert {
+    --backdrop-opacity: 0.6;
+}
+
+/* Đổi màu tiêu đề (Header) */
+.custom-error-alert .alert-title {
+    color: #eb445a !important;
+    /* Màu đỏ của Ionic */
+    font-weight: bold !important;
+    text-transform: uppercase;
+}
+
+/* Đổi màu nội dung (Message) */
+.custom-error-alert .alert-message {
+    color: #333 !important;
+    font-size: 16px !important;
+}
+
+/* Tùy chỉnh riêng cho cái tên điểm cần quét (nếu bạn dùng thẻ b ở bước 1) */
+.custom-error-alert .highlight-point {
+    color: #2fdf75;
+    /* Màu xanh lá nổi bật hoặc màu vàng tùy bạn */
+    font-size: 1.2em;
+    text-decoration: underline;
+}
+
+/* Đổi màu nút bấm để đồng bộ */
+.custom-error-alert .alert-button {
+    color: #eb445a !important;
+    font-weight: bold;
+}
