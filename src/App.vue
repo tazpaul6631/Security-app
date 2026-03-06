@@ -21,46 +21,82 @@ import { useOfflineManager } from '@/composables/useOfflineManager';
 const { syncData } = useOfflineManager();
 const { initDatabase } = useSQLite();
 const isAppReady = ref(false);
+
+// Biến để lưu vết trạng thái mạng trước đó, tránh gọi sync trùng lặp
+let lastNetworkStatus: boolean | null = null;
 let networkHandler: PluginListenerHandle | null = null;
 
 onMounted(async () => {
-  // 1. Khởi tạo Database trước tiên
   try {
+    // 1. Khởi tạo Database cơ sở
     await initDatabase();
 
-    // 2. Phục hồi phiên làm việc (Token) từ SQLite lên RAM
-    await store.dispatch('restoreToken');
-    await store.dispatch('restoreUser');
+    // 2. Phục hồi session người dùng
+    await Promise.all([
+      store.dispatch('restoreToken'),
+      store.dispatch('restoreUser')
+    ]);
 
-    // 3. Nếu đã login, nạp sẵn dữ liệu nền (Area, Checkpoints...)
+    // 3. Thiết lập trạng thái mạng ban đầu
+    const status = await Network.getStatus();
+    lastNetworkStatus = status.connected;
+    store.commit('SET_NETWORK_STATUS', status.connected);
+
+    // 4. Nếu đã đăng nhập, chuẩn bị dữ liệu và đồng bộ ngay
     if (store.state.token) {
-      // Nạp dữ liệu từ máy lên RAM ngay để vào Home là có data luôn
       await store.dispatch('initApp');
 
-      // Thử đẩy báo cáo kẹt (nếu đang có mạng)
-      const status = await Network.getStatus();
       if (status.connected) {
+        console.log('[App] Khởi tạo: Đang có mạng, thử đồng bộ hàng chờ...');
         syncData();
       }
     }
   } catch (e) {
-    console.error('Lỗi khởi tạo hệ thống:', e);
+    console.error('[App] Lỗi khởi tạo hệ thống:', e);
   } finally {
     isAppReady.value = true;
   }
 
-  // 4. Lắng nghe thay đổi mạng
+  // 5. Lắng nghe thay đổi mạng (Chống dội - Debounce logic)
   networkHandler = await Network.addListener('networkStatusChange', status => {
-    store.commit('SET_NETWORK_STATUS', status.connected);
-    if (status.connected && store.state.token) {
-      setTimeout(() => {
+    const isOnline = status.connected;
+
+    // Chỉ xử lý nếu trạng thái thực sự thay đổi (ví dụ từ False -> True)
+    if (isOnline !== lastNetworkStatus) {
+      console.log(`[App] Mạng thay đổi: ${isOnline ? 'ONLINE' : 'OFFLINE'}`);
+
+      store.commit('SET_NETWORK_STATUS', isOnline);
+      lastNetworkStatus = isOnline;
+
+      // Chỉ kích hoạt sync khi chuyển từ mất mạng sang có mạng
+      if (isOnline && store.state.token) {
+        // Gọi syncData ngay, biến isInternalProcessing trong hook sẽ lo việc chặn trùng lặp
         syncData();
-      }, 2000);
+      }
     }
   });
 });
 
 onUnmounted(async () => {
-  if (networkHandler) await networkHandler.remove();
+  if (networkHandler) {
+    await networkHandler.remove();
+  }
 });
 </script>
+
+<style scoped>
+.app-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: #f4f4f4;
+}
+
+.app-loading p {
+  margin-top: 15px;
+  color: #666;
+  font-weight: 500;
+}
+</style>

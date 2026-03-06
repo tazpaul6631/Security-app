@@ -20,34 +20,10 @@
           </div>
         </ion-card-header>
 
-        <ion-card-content>
-          <div class="points-grid">
-            <div v-for="(point, idx) in currentRoute?.routeDetails" :key="point.rdId" class="grid-item-wrapper">
-
-              <div class="point-node" :class="{
-                'done': point.status === 1,
-                'current': isPointActive(point.cpId),
-                'next-step': isCurrentStep(idx)
-              }">
-                <div class="mini-thumb">
-                  <ion-icon class="points-icon" :icon="libraryOutline"></ion-icon>
-                  <div v-if="point.status === 1" class="check-icon">
-                    <ion-icon :icon="checkmark"></ion-icon>
-                  </div>
-                </div>
-                <span class="point-number" :class="{
-                  'done': point.status === 1
-                }">{{ idx + 1 }}</span>
-              </div>
-
-              <div v-if="(idx + 1) % 4 !== 0 && idx !== (currentRoute?.routeDetails?.length ?? 0) - 1" class="h-line"
-                :class="{ 'active': point.status === 1 }">
-              </div>
-
-              <div class="point-label">{{ point.cpName }}</div>
-            </div>
-          </div>
+        <ion-card-content v-if="currentActiveRoute">
+          <card-route-points :details="currentActiveRoute.routeDetails" />
         </ion-card-content>
+
       </ion-card>
 
       <div v-else-if="isReady" class="ion-padding ion-text-center">
@@ -272,7 +248,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, onMounted } from 'vue';
+import { computed, reactive, ref, onMounted, watch } from 'vue';
 import {
   IonPage, IonHeader, IonToolbar, IonTitle, IonContent, IonList, IonItem, IonTextarea,
   IonCheckbox, IonButton, IonIcon, IonCard, IonCardHeader, IonCardTitle, IonCardSubtitle,
@@ -282,7 +258,7 @@ import {
   IonSelect, IonModal, IonSelectOption, IonChip, IonAccordion, IonAccordionGroup,
   alertController
 } from '@ionic/vue';
-import { sendOutline, camera, images, trash, libraryOutline, arrowBackOutline } from 'ionicons/icons';
+import { sendOutline, camera, images, trash, arrowBackOutline } from 'ionicons/icons';
 import { Camera, CameraResultType, CameraDirection, CameraSource } from '@capacitor/camera';
 import { useStore } from 'vuex';
 import { cloudOfflineOutline, trashOutline } from 'ionicons/icons';
@@ -294,6 +270,7 @@ import storageService from '@/services/storage.service';
 import { checkmark } from 'ionicons/icons';
 import { onBeforeRouteLeave } from 'vue-router';
 import { App } from '@capacitor/app';
+import CardRoutePoints from '@/components/CardRoutePoints.vue';
 
 const store = useStore();
 const isReady = ref(false);
@@ -310,9 +287,38 @@ interface Route {
   routeId: string | number;
   routeName: string;
   routeDetails: RouteDetail[];
+  routeCode: string;
+  psHour: number;
+  areaId: number;
+  roleId: number;
 }
+
+const currentHour = ref(new Date().getHours());
 ///////////////////////////////////
 
+// Lọc lộ trình dựa trên User Info + Thời gian
+const currentActiveRoute = computed<Route | null>(() => {
+  const routes = (store.state.dataListRoute || []) as Route[];
+  const userData = store.state.dataUser;
+
+  const uRole = Number(userData?.userRoleId);
+  const uArea = Number(userData?.userAreaId);
+
+  if (!routes.length || isNaN(uRole) || isNaN(uArea)) return null;
+
+  return routes.find(r =>
+    Number(r.areaId) === uArea &&
+    Number(r.roleId) === uRole &&
+    Number(r.psHour) === currentHour.value
+  ) || null;
+});
+
+// Theo dõi thay đổi lộ trình (nhảy giờ)
+watch(currentActiveRoute, (newVal, oldVal) => {
+  if (oldVal && newVal && oldVal.routeId !== newVal.routeId) {
+    console.log("Hệ thống tự động chuyển lộ trình sang khung giờ mới:", newVal.psHour);
+  }
+});
 ///////////////////////////////////////
 // 1. Lấy ID route từ store
 const currentRouteId = computed(() => store.state.routeId);
@@ -1025,178 +1031,6 @@ ion-list-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-}
-
-.points-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  /* Chia 4 cột cố định */
-  gap: 15px 5px;
-  /* Khoảng cách giữa các hàng và cột */
-  padding: 10px 0;
-}
-
-.grid-item-wrapper {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  position: relative;
-}
-
-.point-node {
-  width: 45px;
-  height: 45px;
-  position: relative;
-  border-radius: 10px;
-  padding: 2px;
-  border: 2px solid #ddd;
-  transition: all 0.3s;
-}
-
-.point-node.done {
-  border-color: var(--ion-color-success);
-}
-
-.point-node.current {
-  border-color: var(--ion-color-primary);
-  transform: scale(1.1);
-  box-shadow: 0 0 8px rgba(56, 128, 255, 0.4);
-}
-
-.points-icon {
-  width: 80%;
-  height: 100%;
-}
-
-.mini-thumb {
-  text-align: center;
-  width: 100%;
-  height: 100%;
-  border-radius: 6px;
-  overflow: hidden;
-  position: relative;
-}
-
-.mini-thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  opacity: 0.7;
-}
-
-.point-node.done img {
-  opacity: 1;
-}
-
-.check-icon {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  background: white;
-  border-radius: 50%;
-  color: var(--ion-color-success);
-  display: flex;
-  font-size: 16px;
-}
-
-.point-number {
-  position: absolute;
-  bottom: -6px;
-  right: -6px;
-  background: #666;
-  color: white;
-  font-size: 10px;
-  padding: 2px 5px;
-  border-radius: 10px;
-  border: 1px solid white;
-}
-
-.point-number.done {
-  background: var(--ion-color-success);
-}
-
-.point-node.current .point-number {
-  background: var(--ion-color-primary);
-}
-
-/* Hiệu ứng nhấp nháy cho điểm cần quét tiếp theo */
-.point-node.next-step {
-  border-color: var(--ion-color-warning);
-  border-style: dashed;
-  animation: pulse-orange 2s infinite;
-}
-
-@keyframes pulse-orange {
-  0% {
-    box-shadow: 0 0 0 0 rgba(255, 152, 0, 0.7);
-    transform: scale(1);
-  }
-
-  70% {
-    box-shadow: 0 0 0 10px rgba(255, 152, 0, 0);
-    transform: scale(1.05);
-  }
-
-  100% {
-    box-shadow: 0 0 0 0 rgba(255, 152, 0, 0);
-    transform: scale(1);
-  }
-}
-
-/* Mặc định Node chưa xong thì nên có màu xám nhẹ thay vì xanh success */
-.point-node {
-  width: 45px;
-  height: 45px;
-  position: relative;
-  border-radius: 10px;
-  padding: 2px;
-  border: 2px solid #ddd;
-  /* Đổi từ success sang xám */
-  transition: all 0.3s;
-  background: white;
-}
-
-/* Chỉ khi xong mới hiện viền xanh */
-.point-node.done {
-  border-color: var(--ion-color-success);
-  border-style: solid;
-}
-
-.h-line {
-  background: #ddd;
-  /* Mặc định màu xám */
-  position: absolute;
-  top: 22px;
-  right: -25%;
-  width: 37%;
-  height: 2px;
-  z-index: 0;
-  transition: background 0.5s;
-}
-
-/* Thêm class active cho đường nối */
-.h-line.active {
-  background: var(--ion-color-success);
-}
-
-/* Điểm đang đứng tại đó để kiểm tra */
-.point-node.current {
-  border: 2px solid var(--ion-color-warning);
-  /* Màu cam nổi bật */
-  transform: scale(1.1);
-  box-shadow: 0 0 10px rgba(255, 196, 0, 0.5);
-}
-
-.point-label {
-  overflow-wrap: break-word;
-  margin-top: 8px;
-  font-size: 0.65rem;
-  color: #666;
-  text-align: center;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  width: 60px;
 }
 
 /** */

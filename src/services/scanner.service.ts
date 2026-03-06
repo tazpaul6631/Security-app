@@ -25,7 +25,7 @@ export const scannerService = {
         // 1. Tìm lộ trình cụ thể mà người dùng đã chọn
         const currentRoute = dataListRoute.find((r: any) => r.routeId === routeId);
         if (!currentRoute) {
-            await presentAlert.presentAlert('Lỗi', 'Không tìm thấy thông tin lộ trình đã chọn.');
+            await presentAlert.presentAlert('Lỗi', '', 'Không tìm thấy thông tin lộ trình đã chọn.');
             return;
         }
 
@@ -45,7 +45,7 @@ export const scannerService = {
                 listScanQr.cpwId = segments[3];   // ID của checkpoint từ QR
                 listScanQr.cpwCode = segments[4];
             } catch (e) {
-                await presentAlert.presentAlert('Lỗi', 'Mã QR không hợp lệ');
+                await presentAlert.presentAlert('Lỗi', '', 'Mã QR không hợp lệ');
                 return;
             }
         }
@@ -55,7 +55,7 @@ export const scannerService = {
         const nextPointRequired = currentRoute.routeDetails.find((point: any) => point.status !== 1);
 
         if (!nextPointRequired) {
-            await presentAlert.presentAlert('Thông báo', 'Lộ trình này đã được hoàn thành tất cả các điểm.');
+            await presentAlert.presentAlert('Thông báo', '', 'Lộ trình này đã được hoàn thành tất cả các điểm.');
             return;
         }
 
@@ -63,7 +63,8 @@ export const scannerService = {
         if (String(listScanQr.cpwId) !== String(nextPointRequired.cpId)) {
             await presentAlert.presentAlert(
                 'Sai thứ tự tuần tra',
-                `Bạn cần quét điểm tiếp theo là: <b class="highlight-point">${nextPointRequired.cpName}</b>.<br><br>Vui lòng đi đúng lộ trình.`,
+                nextPointRequired.cpName,
+                `Là điểm tiếp theo cần quét. Vui lòng đi đúng lộ trình.`,
                 'custom-error-alert' // Thêm định danh class ở đây
             );
             return; // Chặn lại, không cho đi tiếp trang create nếu sai thứ tự
@@ -98,7 +99,7 @@ export const scannerService = {
             if (finalData) {
                 // Kiểm tra AreaId (giữ nguyên logic của bạn)
                 if (finalData.areaId !== dataUser.userAreaId) {
-                    await presentAlert.presentAlert('Lỗi', `Mã QR không đúng khu vực!`);
+                    await presentAlert.presentAlert('Lỗi', '', `Mã QR không đúng khu vực!`);
                     return;
                 }
 
@@ -110,10 +111,10 @@ export const scannerService = {
                     router.replace('/checkpoint/create');
                 }, 100);
             } else {
-                await presentAlert.presentAlert('Thông báo', 'Không tìm thấy thông tin điểm này trong dữ liệu hệ thống.');
+                await presentAlert.presentAlert('Thông báo', '', 'Không tìm thấy thông tin điểm này trong dữ liệu hệ thống.');
             }
         } catch (error) {
-            await presentAlert.presentAlert('Lỗi', 'Hệ thống không thể xử lý mã quét.');
+            await presentAlert.presentAlert('Lỗi', '', 'Hệ thống không thể xử lý mã quét.');
         }
     }
 };

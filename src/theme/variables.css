@@ -6,7 +6,7 @@ http://ionicframework.com/docs/theming/ */
 }
 
 /* Đổi màu tiêu đề (Header) */
-.custom-error-alert .alert-title {
+.custom-error-alert .alert-sub-title {
     color: #eb445a !important;
     /* Màu đỏ của Ionic */
     font-weight: bold !important;
@@ -25,10 +25,4 @@ http://ionicframework.com/docs/theming/ */
     /* Màu xanh lá nổi bật hoặc màu vàng tùy bạn */
     font-size: 1.2em;
     text-decoration: underline;
-}
-
-/* Đổi màu nút bấm để đồng bộ */
-.custom-error-alert .alert-button {
-    color: #eb445a !important;
-    font-weight: bold;
 }

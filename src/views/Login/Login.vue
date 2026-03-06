@@ -63,6 +63,7 @@ import PointReport from '@/api/PointReport';
 import AreaBU from '@/api/AreaBU';
 import RouteList from '@/api/RouteList';
 import ReportNoteCategory from '@/api/ReportNoteCategory';
+import PatrolShiftView from '@/api/PatrolShiftView';
 
 const router = useRouter();
 const store = useStore();
@@ -103,6 +104,13 @@ const handleLogin = async () => {
     try {
         const isOnline = store.state.isOnline; // Lấy trạng thái mạng
 
+        const now = new Date();
+        const dateInfo = {
+            psDay: now.getDate(),
+            psMonth: now.getMonth() + 1,
+            psYear: now.getFullYear()
+        };
+
         if (isOnline) {
             // ==========================================
             // KỊCH BẢN 1: CÓ MẠNG -> LOGIN SERVER & LƯU DANH BẠ
@@ -111,7 +119,10 @@ const handleLogin = async () => {
             const result = responseBU.data;
 
             if (result?.success && result.data) {
-                const userData = result.data;
+                const userData = {
+                    ...result.data,
+                    ...dateInfo,
+                };
 
                 // 1. Quản lý phiên làm việc hiện tại (Của riêng bạn)
                 store.commit('SET_DATAUSER', userData);
@@ -132,7 +143,7 @@ const handleLogin = async () => {
                     checkpoints: () => CheckPointScanQr.postCheckPointView(),
                     checkpoints_id: () => PointReport.postPointReportView(),
                     area_bu: () => AreaBU.postAreaBU(),
-                    list_route: () => RouteList.postListRoute(),
+                    list_route: () => PatrolShiftView.postPatrolShiftView(userData),
                     report_note_category: () => ReportNoteCategory.getReportNoteCategory(),
                 };
                 await store.dispatch('syncAllData', apiList);

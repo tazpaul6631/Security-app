@@ -88,7 +88,7 @@
 
                                     </ion-label>
                                     <ion-note class="labelItem">{{ item.createdAt.replace('T', ' ').slice(0, 16)
-                                        }}</ion-note>
+                                    }}</ion-note>
                                 </ion-col>
                             </ion-row>
                         </ion-grid>
@@ -376,7 +376,7 @@ const handleSelectionChange = async (event: any) => {
             store.commit('SET_DATACP', [reportData]);
         } catch (e) {
             console.error("❌ Lỗi điều hướng Menu:", e);
-            presentAlert.presentAlert('Lỗi', 'Đã có lỗi xảy ra khi mở khu vực này.');
+            presentAlert.presentAlert('Lỗi', '', 'Đã có lỗi xảy ra khi mở khu vực này.');
         } finally {
             // Load xong thì tắt đi để hiện danh sách thật
             isLoading.value = false;

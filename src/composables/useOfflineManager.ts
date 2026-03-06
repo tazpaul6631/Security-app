@@ -1,15 +1,22 @@
 import { ref, computed } from 'vue';
-// 1. Bỏ import Network đi vì ta sẽ lấy mạng từ Vuex
 import storage from '@/services/storage.service';
 import { ImageService } from '@/services/image.service';
 import PointReport from '@/api/PointReport';
-import store from '@/composables/useVuex'; // 2. Import Vuex Store vào đây
+import store from '@/composables/useVuex';
 import { toastController } from '@ionic/vue';
+
+// --- TRẠNG THÁI GLOBAL (Singleton) ---
+// pendingItems và isSyncing dùng để hiển thị UI
+const pendingItems = ref<PendingItem[]>([]);
+const isSyncing = ref(false);
+
+// BIẾN QUAN TRỌNG: Chặn vòng lặp logic (không gây re-render)
+let isInternalProcessing = false;
 
 const presentToast = async (message: string) => {
   const toast = await toastController.create({
     message: message,
-    duration: 5000,
+    duration: 3000,
     position: 'top',
     color: 'warning'
   });
@@ -23,23 +30,18 @@ interface PendingItem {
   imageFiles: string[];
 }
 
-// 3. CHỈ CÒN LẠI 2 BIẾN NÀY LÀ GLOBAL (Bỏ hẳn isOnline và networkListener đi)
-const pendingItems = ref<PendingItem[]>([]);
-const isSyncing = ref(false);
-
 export function useOfflineManager() {
 
-  // --- Tải danh sách chờ từ Storage ---
   const loadPendingItems = async (): Promise<void> => {
     const data = await storage.get('offline_api_queue');
     pendingItems.value = (data as PendingItem[]) || [];
   };
 
-  // --- Hàm gửi dữ liệu ---
   const sendData = async (url: string, data: any, imagesBase64: string[] = []): Promise<void> => {
     const id = Date.now();
-
     const imageFiles: string[] = [];
+
+    // Lưu ảnh vào bộ nhớ máy
     for (const base64 of imagesBase64) {
       try {
         const fileName = await ImageService.saveImage(base64);
@@ -51,17 +53,17 @@ export function useOfflineManager() {
 
     const newItem: PendingItem = { id, url, data, imageFiles };
 
-    // 4. ĐIỂM ĂN TIỀN: LẤY TRẠNG THÁI MẠNG TRỰC TIẾP TỪ VUEX STORE
+    // Kiểm tra mạng từ Vuex
     if (store.state.isOnline) {
       try {
         await uploadToServer(newItem);
+        // Thành công: Xóa ảnh ngay
         for (const f of imageFiles) await ImageService.deleteImage(f);
       } catch (error) {
         console.warn("Gửi trực tiếp thất bại, chuyển vào hàng chờ...");
         await addToQueue(newItem);
       }
     } else {
-      console.log("Đang offline, đã lưu vào hàng chờ.");
       await addToQueue(newItem);
     }
   };
@@ -72,133 +74,109 @@ export function useOfflineManager() {
     await storage.set('offline_api_queue', queue);
     await loadPendingItems();
 
-    // Bóc tách user an toàn
+    // Cập nhật UI ngay lập tức bằng báo cáo ảo
     const actualUser: any = store.state.dataUser;
     const userData = actualUser?.data ? actualUser.data : actualUser;
-
-    // Lấy thêm thông tin từ QR để trang Detail hiển thị đầy đủ tiêu đề
     const scanData: any = store.state.dataScanQr || {};
 
-    // TẠO MOCK REPORT CHUẨN XÁC
     const mockReport = {
-      // 1. Lấy luôn item.id (chính là Date.now() dạng số nguyên) làm prId ảo
-      prId: item.data.prId || item.id,
+      prId: item.id,
       routeId: item.data.routeId,
       rdId: item.data.rdId,
       cpId: item.data.cpId,
       cpName: scanData.cpName || item.data.cpCode || 'Khu vực (Đang Offline)',
-      areaName: scanData.areaName || '',
-      cpDescription: scanData.cpDescription || '',
-
-      createdName: userData?.fullName || userData?.userName || 'Tôi (Đang Offline)',
-      createdAt: item.data.createdAt || item.data.scanAt || new Date().toISOString(),
+      createdName: userData?.fullName || 'Tôi (Offline)',
+      createdAt: item.data.createdAt || new Date().toISOString(),
       prHasProblem: item.data.prHasProblem,
       prNote: item.data.prNote,
       isOfflineMock: true,
-
-      // 2. Truyền nguyên mảng ảnh vào để trang AreaDetail đọc được ngay lập tức
       reportImages: item.data.images || []
     };
 
     await presentToast('Đã lưu vào hàng chờ. Sẽ tự động gửi khi có mạng.');
-
     store.commit('ADD_OFFLINE_REPORT', mockReport);
   };
 
-  // --- Cơ chế đồng bộ ---
+  // --- TIẾN TRÌNH ĐỒNG BỘ CHÍNH ---
   const syncData = async (): Promise<void> => {
-    // 5. CHECK MẠNG TỪ VUEX STORE
-    if (isSyncing.value || !store.state.isOnline) {
-      console.log("--- Bỏ qua lượt Sync: Hệ thống đang bận hoặc Offline ---");
+    // 1. CHẶN TRÙNG LẶP: Nếu đang chạy hoặc mất mạng thì thoát ngay
+    if (isInternalProcessing || !store.state.isOnline) {
       return;
     }
 
+    // 2. KHÓA TIẾN TRÌNH
+    isInternalProcessing = true;
     isSyncing.value = true;
-    console.log("--- BẮT ĐẦU TIẾN TRÌNH ĐỒNG BỘ ---");
+    console.log("--- [START] BẮT ĐẦU TIẾN TRÌNH ĐỒNG BỘ ---");
 
     try {
       await loadPendingItems();
-
       if (pendingItems.value.length === 0) {
-        return; // Sẽ nhảy xuống finally để reset isSyncing
+        console.log("--- Hàng chờ trống, dừng Sync ---");
+        return;
       }
 
+      // Tạo bản sao queue để xử lý
       const queue = [...pendingItems.value];
 
       for (const item of queue) {
+        // Kiểm tra mạng lại trong từng vòng lặp (đề phòng rớt mạng giữa chừng)
         if (!store.state.isOnline) break;
 
         try {
           await uploadToServer(item);
 
-          if (item.imageFiles && item.imageFiles.length > 0) {
+          // Thành công: Xóa ảnh vật lý
+          if (item.imageFiles?.length > 0) {
             for (const fileName of item.imageFiles) {
-              try {
-                await ImageService.deleteImage(fileName);
-              } catch (imgError) { }
+              await ImageService.deleteImage(fileName).catch(() => { });
             }
           }
 
+          // Xóa khỏi Vuex và Storage
           store.commit('REMOVE_OFFLINE_REPORT', item.id);
-
           const currentQueue: PendingItem[] = await storage.get('offline_api_queue') || [];
           const updatedQueue = currentQueue.filter(q => q.id !== item.id);
           await storage.set('offline_api_queue', updatedQueue);
+
+          // Cập nhật state nội bộ để UI biết đã xử lý xong 1 item
           pendingItems.value = updatedQueue;
 
         } catch (error: any) {
-          // 1. Lấy mã lỗi CHUẨN XÁC (Dành cho Axios hoặc Fetch)
           const statusCode = error.response?.status || error.status;
 
           if (statusCode === 400 || statusCode === 422) {
-            // LỖI DO DATA SAI: Xóa hoàn toàn để không chặn đường các item khác
-            console.error(`Dữ liệu sai (Lỗi ${statusCode}), loại bỏ vĩnh viễn item này.`);
-
-            // A. Xóa báo cáo ảo trên Vuex
+            console.error(`Dữ liệu sai (Lỗi ${statusCode}), xóa bỏ item:`, item.id);
             store.commit('REMOVE_OFFLINE_REPORT', item.id);
 
-            // B. Xóa ảnh vật lý (tránh rác bộ nhớ máy)
-            if (item.imageFiles && item.imageFiles.length > 0) {
-              for (const fileName of item.imageFiles) {
-                try {
-                  await ImageService.deleteImage(fileName);
-                } catch (imgError) { }
-              }
-            }
-
-            // C. Cập nhật lại SQLite (Xóa hẳn khỏi hàng chờ)
             const currentQueue: PendingItem[] = await storage.get('offline_api_queue') || [];
             const updatedQueue = currentQueue.filter(q => q.id !== item.id);
             await storage.set('offline_api_queue', updatedQueue);
             pendingItems.value = updatedQueue;
-
-            // Tiếp tục vòng lặp for để đồng bộ các báo cáo khác
             continue;
-          }
-          else {
-            // LỖI DO SERVER CHẾT (500, 502, 503, Timeout, rớt mạng giữa chừng...)
-            console.error(`Server sập hoặc mất kết nối mạng ngầm:`, error);
-
-            // Dừng vòng lặp ngay lập tức! Giữ nguyên SQLite và Vuex để chờ lát có mạng gửi lại
+          } else {
+            // Lỗi hệ thống/mạng: Dừng vòng lặp để lần sau thử lại
+            console.error(`Lỗi kết nối Server, tạm dừng Sync.`);
             break;
           }
         }
       }
     } catch (e) {
-      console.error("Lỗi tổng quát trong tiến trình đồng bộ:", e);
+      console.error("Lỗi tổng quát Sync:", e);
     } finally {
+      // 3. GIẢI PHÓNG KHÓA
+      isInternalProcessing = false;
       isSyncing.value = false;
       await loadPendingItems();
+      console.log("--- [END] KẾT THÚC TIẾN TRÌNH ĐỒNG BỘ ---");
     }
   };
 
   const uploadToServer = async (item: PendingItem): Promise<any> => {
-    console.log(item.data);
     return await PointReport.createPointReport(item.data);
   };
 
   return {
-    // Trả về biến isOnline lấy từ Vuex để giao diện (nếu cần) xài chung luôn
     isOnline: computed(() => store.state.isOnline),
     isSyncing,
     pendingItems,
