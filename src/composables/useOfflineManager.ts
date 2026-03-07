@@ -80,6 +80,7 @@ export function useOfflineManager() {
     const scanData: any = store.state.dataScanQr || {};
 
     const mockReport = {
+      psId: item.data.psId,
       prId: item.id,
       routeId: item.data.routeId,
       rdId: item.data.rdId,
@@ -173,7 +174,7 @@ export function useOfflineManager() {
   };
 
   const uploadToServer = async (item: PendingItem): Promise<any> => {
-    return await PointReport.createPointReport(item.data);
+    // return await PointReport.createPointReport(item.data);
   };
 
   return {

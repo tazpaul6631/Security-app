@@ -12,9 +12,10 @@
     </ion-header>
 
     <ion-content>
-      <div v-if="!getPrIdData" class="ion-padding ion-text-center">
-        <ion-spinner name="crescent"></ion-spinner>
-        <p>Đang tải chi tiết...</p>
+      <div v-if="!getPrIdData" class="ion-padding ion-text-center no-route-container">
+        <ion-icon :icon="calendarOutline" style="font-size: 64px; color: #ccc;"></ion-icon>
+        <h3>Chưa có danh sách</h3>
+        <ion-button fill="clear" @click="router.replace('/home')">Quay lại trang chủ</ion-button>
       </div>
 
       <ion-card v-else>
@@ -72,12 +73,14 @@
 </template>
 
 <script setup lang="ts">
+import router from '@/router';
 import {
   IonHeader, IonToolbar, IonTitle, IonCard, IonCardHeader, IonCardTitle,
   IonCardSubtitle, IonCardContent, IonCol, IonGrid, IonRow, IonPage,
   IonContent, IonLabel, IonImg, IonModal, IonButtons, IonBackButton,
   IonSpinner, IonList, IonItem
 } from '@ionic/vue'
+import { calendarOutline } from 'ionicons/icons';
 import { ref, computed } from 'vue';
 import { useStore } from 'vuex';
 

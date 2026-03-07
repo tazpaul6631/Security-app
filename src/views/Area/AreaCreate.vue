@@ -12,22 +12,23 @@
     </ion-header>
 
     <ion-content class="ion-padding">
-      <ion-card class="inspection-grid-card" v-if="currentRoute">
+      <ion-card class="inspection-grid-card" v-if="currentRoute && currentActiveRoute">
         <ion-card-header>
-          <ion-badge color="success" mode="ios" class="header-badge">Đang thực hiện</ion-badge>
-          <div class="header-flex">
-            <ion-card-title>{{ currentRoute?.routeName }}</ion-card-title>
-          </div>
+          <ion-card-title>{{ currentRoute?.routeName }}</ion-card-title>
+          <ion-card-subtitle>
+            Mã: {{ currentActiveRoute.routeCode }} | Giờ trực: {{ currentActiveRoute.psHourFrom }}h
+          </ion-card-subtitle>
         </ion-card-header>
 
-        <ion-card-content v-if="currentActiveRoute">
+        <ion-card-content>
           <card-route-points :details="currentActiveRoute.routeDetails" />
         </ion-card-content>
-
       </ion-card>
 
-      <div v-else-if="isReady" class="ion-padding ion-text-center">
+      <div v-else-if="isReady" class="ion-padding ion-text-center no-route-container">
+        <ion-icon :icon="calendarOutline" style="font-size: 64px; color: #ccc;"></ion-icon>
         <p>Không tìm thấy thông tin lộ trình phù hợp.</p>
+        <ion-button fill="clear" @click="router.replace('/home')">Quay lại trang chủ</ion-button>
       </div>
 
       <div v-if="isReady">
@@ -248,7 +249,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, onMounted, watch } from 'vue';
+import { computed, reactive, ref, onMounted, watch, onUnmounted } from 'vue';
 import {
   IonPage, IonHeader, IonToolbar, IonTitle, IonContent, IonList, IonItem, IonTextarea,
   IonCheckbox, IonButton, IonIcon, IonCard, IonCardHeader, IonCardTitle, IonCardSubtitle,
@@ -258,7 +259,7 @@ import {
   IonSelect, IonModal, IonSelectOption, IonChip, IonAccordion, IonAccordionGroup,
   alertController
 } from '@ionic/vue';
-import { sendOutline, camera, images, trash, arrowBackOutline } from 'ionicons/icons';
+import { sendOutline, camera, images, trash, arrowBackOutline, calendarOutline } from 'ionicons/icons';
 import { Camera, CameraResultType, CameraDirection, CameraSource } from '@capacitor/camera';
 import { useStore } from 'vuex';
 import { cloudOfflineOutline, trashOutline } from 'ionicons/icons';
@@ -267,7 +268,6 @@ import storage from '@/services/storage.service';
 import { ImageService } from '@/services/image.service';
 import router from '@/router';
 import storageService from '@/services/storage.service';
-import { checkmark } from 'ionicons/icons';
 import { onBeforeRouteLeave } from 'vue-router';
 import { App } from '@capacitor/app';
 import CardRoutePoints from '@/components/CardRoutePoints.vue';
@@ -284,41 +284,44 @@ interface RouteDetail {
 }
 
 interface Route {
-  routeId: string | number;
+  routeId: number;
   routeName: string;
-  routeDetails: RouteDetail[];
   routeCode: string;
-  psHour: number;
+  psHourFrom: number;
+  psHourTo: number;
+  routeDetails: RouteDetail[];
   areaId: number;
   roleId: number;
+  psId: number;
 }
-
-const currentHour = ref(new Date().getHours());
 ///////////////////////////////////
-
-// Lọc lộ trình dựa trên User Info + Thời gian
+const currentHour = ref(new Date().getHours());
 const currentActiveRoute = computed<Route | null>(() => {
-  const routes = (store.state.dataListRoute || []) as Route[];
+  // Ép computed phụ thuộc vào toàn bộ mảng dataListRoute
+  // Khi bạn dùng [...spread] ở store, biến này sẽ thay đổi và trigger chạy lại ở đây
+  const routes = store.state.dataListRoute;
   const userData = store.state.dataUser;
+  console.log("🔄 Trang Cha: dataListRoute vừa thay đổi tham chiếu, đang tính lại Route...");
+  if (!routes || !routes.length || !userData) return null;
 
-  const uRole = Number(userData?.userRoleId);
-  const uArea = Number(userData?.userAreaId);
+  const uRole = Number(userData.userRoleId);
+  const uArea = Number(userData.userAreaId);
+  const hNow = currentHour.value;
 
-  if (!routes.length || isNaN(uRole) || isNaN(uArea)) return null;
+  const foundRoute = routes.find((r: any) => {
+    const areaMatch = Number(r.areaId) === uArea;
+    const roleMatch = Number(r.roleId) === uRole;
+    const hourMatch = hNow >= Number(r.psHourFrom) && hNow <= Number(r.psHourTo);
+    return areaMatch && roleMatch && hourMatch;
+  });
+  console.log(foundRoute);
+  store.commit('SET_PSID', foundRoute.psId)
+  console.log("📍 Lộ trình hiện tại:", foundRoute?.routeName, "Chi tiết:", foundRoute?.routeDetails);
 
-  return routes.find(r =>
-    Number(r.areaId) === uArea &&
-    Number(r.roleId) === uRole &&
-    Number(r.psHour) === currentHour.value
-  ) || null;
+  // Quan trọng: Trả về một bản sao sâu (Deep copy) nếu cần để cắt đứt tham chiếu cũ
+  return foundRoute ? { ...foundRoute } : null;
 });
 
-// Theo dõi thay đổi lộ trình (nhảy giờ)
-watch(currentActiveRoute, (newVal, oldVal) => {
-  if (oldVal && newVal && oldVal.routeId !== newVal.routeId) {
-    console.log("Hệ thống tự động chuyển lộ trình sang khung giờ mới:", newVal.psHour);
-  }
-});
 ///////////////////////////////////////
 // 1. Lấy ID route từ store
 const currentRouteId = computed(() => store.state.routeId);
@@ -331,20 +334,6 @@ const currentRoute = computed<Route | null>(() => {
   // Dùng == để so sánh linh hoạt giữa string và number
   return routes.find((r: any) => r.routeId == selectedId) || null;
 });
-
-// Kiểm tra xem một điểm (cpId) có phải là điểm VỪA QUÉT được không
-const isPointActive = (cpId: number | string) => {
-  if (!dataScanQr.value) return false;
-  return String(cpId) === String(dataScanQr.value.cpId);
-};
-
-// 4. Kiểm tra điểm hiện tại cần làm (Dùng nếu bạn muốn highlight điểm TIẾP THEO)
-const isCurrentStep = (index: number): boolean => {
-  const details = currentRoute.value?.routeDetails;
-  if (!details) return false;
-  const firstIncomplete = details.findIndex((p: RouteDetail) => p.status !== 1);
-  return index === firstIncomplete;
-};
 
 // Hàm tìm tên checkpoint dựa trên cpId
 const getCheckpointName = (cpId: string) => {
@@ -534,17 +523,20 @@ const removePhoto = (index: number): void => {
 // ==========================================
 const handleSubmit = async (): Promise<void> => {
   const now = new Date();
-  const currentTimeString = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().slice(0, 19);
+  const currentTimeString = new Date(now.getTime() - (now.getTimezoneOffset() * 60000))
+    .toISOString()
+    .slice(0, 19);
 
   if (!dataScanQr.value?.cpId) {
     await showToast('Lỗi: Không tìm thấy dữ liệu Checkpoint', 'danger');
     return;
   }
 
-  const loading = await loadingController.create({ message: 'Đang lưu...' });
+  const loading = await loadingController.create({ message: 'Đang lưu dữ liệu...' });
   await loading.present();
 
   try {
+    // 1. Xử lý hình ảnh (Giữ nguyên)
     const mapImages = await Promise.all(photos.value.map(async (item) => {
       let base64Data = item.rawBase64;
       if (!base64Data && item.preview.startsWith('http')) {
@@ -555,26 +547,22 @@ const handleSubmit = async (): Promise<void> => {
       }
       return { priImage: base64Data, priImageType: item.fileName };
     }));
-
     const base64ImagesOnly = mapImages.map(img => img.priImage);
 
-    // LẤY USER NGAY LÚC SUBMIT TỪ VUEX (Bóc tách an toàn)
-    const rawUser = store.state.dataUser;
-    const actualUser = rawUser?.data ? rawUser.data : rawUser;
-    const userId = actualUser?.userId || '';
-
-    const currentTime_scanQr = await storageService.get('currentTime_scanqr')
     const currentCpId = dataScanQr.value.cpId;
-
-    const routeId = await storageService.get('current_route_id');
-
-    // Tìm rdId từ lộ trình hiện tại
+    const routeId = store.state.routeId;
     const currentDetail = currentRoute.value?.routeDetails.find(
       (d: any) => String(d.cpId) === String(currentCpId)
     );
     const rdId = currentDetail?.rdId || '';
+    const rawUser = store.state.dataUser;
+    const actualUser = rawUser?.data ? rawUser.data : rawUser;
+    const userId = actualUser?.userId || '';
+    const currentTime_scanQr = await storageService.get('currentTime_scanqr');
+    const psId = store.state.psId
 
     const formSubmitData = {
+      psId: psId,
       routeId: routeId,
       rdId: rdId,
       createdAt: currentTimeString,
@@ -586,8 +574,16 @@ const handleSubmit = async (): Promise<void> => {
       images: formData.prHasProblem ? mapImages : []
     };
 
+    console.log(formSubmitData);
+
     // 1. Gửi dữ liệu (Online hoặc lưu Offline vào hàng chờ)
     await sendData(photos.value[0]?.preview, formSubmitData, base64ImagesOnly);
+
+    store.commit('UPDATE_POINT_STATUS', {
+      routeId: routeId,
+      cpId: currentCpId,
+      status: 1
+    });
 
     // 2. Cập nhật trạng thái lộ trình trong Store
     const updatedRoutes = [...store.state.dataListRoute];
@@ -607,21 +603,22 @@ const handleSubmit = async (): Promise<void> => {
         if (allDone) {
           await showToast('Chúc mừng! Bạn đã hoàn thành toàn bộ lộ trình.', 'success');
 
-          // Reset lộ trình về 0 để ca sau làm lại
-          details.forEach((p: any) => p.status = 0);
+          // 1. Chỉ gọi duy nhất một lệnh Reset từ Store
+          // Lệnh này sẽ tự lo việc map status = 0 và lưu SQLite
+          store.commit('RESET_SPECIFIC_ROUTE', routeId);
 
-          // Xóa dữ liệu quét và ID lộ trình vì đã kết thúc vòng tuần tra
+          // 2. Dọn dẹp các trạng thái phiên làm việc
           store.commit('SET_DATASCANQR', null);
           store.commit('SET_ROUTE_ID', null);
-          await storageService.remove('current_route_id');
 
-          // Lưu lại bản sạch xuống storage
-          store.commit('SET_DATA_LIST_ROUTE', updatedRoutes);
-          await storageService.set('list_route', updatedRoutes);
+          await storageService.remove('current_route_id');
+          await storageService.remove('data_scanqr');
 
           await loading.dismiss();
-          // Xong hết thì về Home
+
+          // 3. Chuyển trang
           router.replace({ path: '/home' });
+          return; // Thoát hàm để không chạy logic bên dưới
         } else {
           // CHƯA XONG HẾT: Lưu tiến độ và quay về trang Route để quét tiếp
           store.commit('SET_DATA_LIST_ROUTE', updatedRoutes);
@@ -897,20 +894,21 @@ onMounted(async () => {
 /////////////////////////////////////////////
 
 // --- LOGIC 1: CHẶN THOÁT TRANG ---
-onBeforeRouteLeave((to, from, next) => {
-  const details = currentRoute.value?.routeDetails || [];
-  const isFinished = details.every(p => p.status === 1);
+// onBeforeRouteLeave((to, from, next) => {
+//   // Cho phép nếu:
+//   // 1. Đã hoàn thành lộ trình
+//   // 2. Quay về danh sách lộ trình
+//   // 3. Đang quét lại chính trang create để nạp data mới (to.path === from.path)
+//   const details = currentRoute.value?.routeDetails || [];
+//   const isFinished = details.every(p => p.status === 1);
 
-  // Nếu đã hoàn thành hết hoặc người dùng cố tình quay lại trang /route (để chọn lộ trình mới)
-  // Bạn có thể tùy chỉnh: cho phép thoát nếu về /home nhưng chặn nếu chưa xong
-  if (isFinished || to.path === '/route') {
-    next();
-  } else {
-    // Hiện thông báo nhắc nhở
-    showToast('Bạn phải hoàn thành toàn bộ lộ trình trước khi rời đi!', 'warning');
-    next(false); // Chặn không cho chuyển trang
-  }
-});
+//   if (isFinished || to.path === '/route' || to.path === '/checkpoint/create') {
+//     next();
+//   } else {
+//     showToast('Bạn phải hoàn thành toàn bộ lộ trình trước khi rời đi!', 'warning');
+//     next(false);
+//   }
+// });
 //////////////////////////////////////
 </script>
 
@@ -1019,18 +1017,6 @@ ion-list-header {
 .inspection-grid-card {
   margin: 10px;
   border-radius: 12px;
-}
-
-.header-badge {
-  width: fit-content;
-  font-size: 10px;
-  margin-bottom: 15px;
-}
-
-.header-flex {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
 }
 
 /** */

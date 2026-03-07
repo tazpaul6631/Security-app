@@ -18,6 +18,7 @@ const store = createStore({
       currentTime: null,
       isHydrated: false,
       routeId: null,
+      psId: null,
 
       // Quản lý đồng bộ
       syncProgress: 0,
@@ -34,6 +35,9 @@ const store = createStore({
 
   // 3. Mutations: Hàm đồng bộ duy nhất được phép thay đổi State
   mutations: {
+    SET_PSID(state, data) {
+      state.psId = data
+    },
     SET_DATAMENU(state, data) {
       state.dataMenu = data
     },
@@ -41,20 +45,29 @@ const store = createStore({
       state.dataListCP = data
     },
     SET_DATA_CHECKPOINTS_ID(state, data) {
+      console.log(data);
+
       state.dataCheckpointsId = data
     },
     SET_DATA_AREA_BU(state, data) {
       state.dataAreaBU = data
     },
     SET_DATA_LIST_ROUTE(state: any, data) {
-      if (Array.isArray(data)) {
-        state.dataListRoute = data.map(route => ({
-          ...route,
-          areaId: Number(route.areaId) // Ép về số
-        }));
-      } else {
-        state.dataListRoute = [];
-      }
+      const rawData = Array.isArray(data) ? data : (data?.data || []);
+
+      state.dataListRoute = rawData.map((route: any) => ({
+        ...route,
+        // Ép kiểu để find/filter chính xác
+        areaId: Number(route.areaId),
+        roleId: Number(route.roleId),
+
+        // Cập nhật đúng các field dùng để so sánh giờ
+        psHourFrom: Number(route.psHourFrom),
+        psHourTo: Number(route.psHourTo),
+
+        // Giữ lại psHour nếu các màn hình khác có dùng
+        psHour: route.psHour ? Number(route.psHour) : null
+      }));
     },
     SET_DATAUSER(state, data) {
       state.dataUser = data
@@ -115,19 +128,18 @@ const store = createStore({
     },
 
     // Mutation quét sạch trạng thái lộ trình
-    RESET_ROUTE_DATA(state) {
-      // 1. Reset ID lộ trình hiện tại về null
+    RESET_ROUTE_DATA(state: any) {
       state.routeId = null;
-
-      // 2. Duyệt qua danh sách lộ trình và đưa status của các điểm về 0
       if (Array.isArray(state.dataListRoute)) {
-        state.dataListRoute.forEach((route: any) => {
-          if (Array.isArray(route.routeDetails)) {
-            route.routeDetails.forEach((point: any) => {
-              point.status = 0; // Đưa về trạng thái chưa quét
-            });
-          }
-        });
+        // Tạo bản sao mới của dataListRoute
+        state.dataListRoute = state.dataListRoute.map((route: any) => ({
+          ...route,
+          // Tạo bản sao mới của routeDetails với status = 0
+          routeDetails: route.routeDetails.map((point: any) => ({
+            ...point,
+            status: 0
+          }))
+        }));
       }
     },
 
@@ -155,6 +167,54 @@ const store = createStore({
         // Gán ngược lại vào Store theo đúng cấu trúc cũ
         state.dataListCP = [{ data: currentCPList }];
       }
+    },
+
+    // Thêm vào trong mutations
+    UPDATE_POINT_STATUS(state: any, { routeId, cpId, status }) {
+      if (!state.dataListRoute) return;
+
+      // Sử dụng map để tạo mảng mới hoàn toàn, tránh mọi vấn đề về tham chiếu cũ
+      state.dataListRoute = state.dataListRoute.map((route: any) => {
+        // Nếu không phải route cần tìm, trả về nguyên bản
+        if (Number(route.routeId) !== Number(routeId)) return route;
+
+        // Nếu đúng route, tạo bản sao mới của route và cập nhật routeDetails
+        const newDetails = route.routeDetails.map((detail: any) => {
+          // KIỂM TRA KỸ: So sánh cpId (hoặc rdId tùy logic của bạn)
+          if (Number(detail.cpId) === Number(cpId)) {
+            console.log("🎯 Tìm thấy điểm cần cập nhật:", detail.cpName);
+            return { ...detail, status: status }; // Trả về object mới với status = 1
+          }
+          return detail;
+        });
+
+        return { ...route, routeDetails: newDetails };
+      });
+
+      // Sau khi map xong, state.dataListRoute ĐÃ LÀ MẢNG MỚI HOÀN TOÀN
+      console.log("🚀 Dữ liệu sau khi map hoàn tất:", state.dataListRoute);
+
+      // Lưu vào SQLite
+      storageService.set('list_route', state.dataListRoute);
+    },
+
+    // Thêm vào mutations trong store/index.ts
+    RESET_SPECIFIC_ROUTE(state: any, routeId: number | string) {
+      state.dataListRoute = state.dataListRoute.map((route: any) => {
+        if (String(route.routeId) !== String(routeId)) return route;
+
+        return {
+          ...route,
+          routeDetails: route.routeDetails.map((detail: any) => ({
+            ...detail,
+            status: 0 // Ép tất cả về 0
+          }))
+        };
+      });
+
+      // Lưu xuống SQLite ngay để đồng bộ
+      storageService.set('list_route', state.dataListRoute);
+      console.log("🔄 Store: Đã reset lộ trình về 0");
     },
 
     // Dùng để dọn sạch bộ nhớ RAM khi người dùng bấm Đăng Xuất
@@ -291,6 +351,8 @@ const store = createStore({
       if (!state.dataCheckpointsId || state.dataCheckpointsId.length === 0) {
         let response = await storageService.get('checkpoints_id');
 
+        console.log(response);
+
         // Đề phòng SQLite trả về chuỗi JSON thô
         if (typeof response === 'string') {
           try { response = JSON.parse(response); } catch (e) { }
@@ -345,12 +407,27 @@ const store = createStore({
     },
 
     async restoreListRoute({ commit, state }) {
-      const response = await storageService.get('list_route');
-      if (response) {
-        // Ép kiểu về mảng nếu cần và đảm bảo không lấy nhầm tầng .data.data
-        const actualData = Array.isArray(response) ? response : (response.data || []);
-        commit('SET_DATA_LIST_ROUTE', actualData);
-        console.log('✅ Restore List Route:', actualData);
+      try {
+        const response = await storageService.get('list_route');
+        if (response) {
+          // Bóc tách dữ liệu: 
+          // Trường hợp 1: response là mảng [{}, {}]
+          // Trường hợp 2: response là { data: [{}, {}] }
+          // Trường hợp 3: response là { data: { data: [] } } (đôi khi API bọc 2 lần)
+          let actualData = response;
+          if (response.data) {
+            actualData = Array.isArray(response.data) ? response.data : (response.data.data || []);
+          }
+
+          if (Array.isArray(actualData)) {
+            commit('SET_DATA_LIST_ROUTE', actualData);
+            console.log('✅ Restore List Route thành công:', actualData);
+          } else {
+            console.warn('⚠️ Dữ liệu List Route không phải là mảng:', actualData);
+          }
+        }
+      } catch (error) {
+        console.error("❌ Lỗi khi restore List Route:", error);
       }
     },
 
@@ -423,17 +500,12 @@ const store = createStore({
       }
     },
 
-    async resetCurrentRoute({ commit }) {
+    async resetCurrentRoute({ commit, state }) {
       try {
-        // 1. Gọi mutation để xóa trên RAM (Giao diện sẽ cập nhật ngay lập tức)
         commit('RESET_ROUTE_DATA');
-
-        // 2. Cập nhật lại SQLite để khi F5 không bị khôi phục lại lộ trình cũ
         await storageService.remove('current_route_id');
 
-        // 3. Ghi đè danh sách lộ trình đã reset status vào SQLite
-        // (Giả sử bạn dùng state.dataListRoute làm nguồn cấp dữ liệu)
-        const updatedList = this.state.dataListRoute;
+        const updatedList = state.dataListRoute;
         await storageService.set('list_route', updatedList);
 
         console.log('✅ Đã xóa lộ trình và reset trạng thái thành công');

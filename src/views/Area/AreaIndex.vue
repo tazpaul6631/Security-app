@@ -52,12 +52,12 @@
                     </ion-item>
                 </ion-list>
 
-                <div v-else-if="filteredDetails.length === 0" class="ion-padding ion-text-center">
-                    <div class="ion-padding">
-                        Danh sách: <strong style="color: red;">
+                <div v-else-if="filteredDetails.length === 0" class="ion-padding ion-text-center no-route-container">
+                    <ion-icon :icon="calendarOutline" style="font-size: 64px; color: #ccc;"></ion-icon>
+                    <p>Danh sách: <strong style="color: red;">
                             {{ selectedItem ? selectedItem[0] : 'Chưa chọn' }}
-                        </strong>
-                    </div>
+                        </strong></p>
+                    <ion-button fill="clear" @click="router.replace('/home')">Quay lại trang chủ</ion-button>
                 </div>
 
                 <ion-list v-else>
@@ -88,7 +88,7 @@
 
                                     </ion-label>
                                     <ion-note class="labelItem">{{ item.createdAt.replace('T', ' ').slice(0, 16)
-                                    }}</ion-note>
+                                        }}</ion-note>
                                 </ion-col>
                             </ion-row>
                         </ion-grid>
@@ -113,9 +113,9 @@ import {
     IonSegment, IonSegmentButton, IonSelect, IonSelectOption, IonContent, IonIcon,
     IonGrid, IonRow, IonCol, IonText, IonNote, loadingController, IonItem,
     IonList, alertController, onIonViewWillEnter, IonProgressBar, IonSkeletonText,
-    IonInfiniteScroll, IonInfiniteScrollContent
+    IonInfiniteScroll, IonInfiniteScrollContent, IonButton
 } from '@ionic/vue';
-import { documentOutline, warningOutline } from "ionicons/icons";
+import { calendarOutline, documentOutline, warningOutline } from "ionicons/icons";
 import { computed, ref, nextTick, watch } from 'vue';
 import { useStore } from 'vuex';
 import { useRoute } from 'vue-router';

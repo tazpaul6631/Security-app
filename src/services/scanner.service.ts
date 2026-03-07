@@ -14,8 +14,6 @@ export const scannerService = {
     async startScanning(store: Store<any>, router: Router, routeId: number) {
         const now = new Date();
         const currentTimeString = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().slice(0, 19);
-
-        const dataUser = store.state.dataUser;
         const dataListRoute = store.state.dataListRoute;
 
         // Lưu routeId đang thực hiện vào store/storage
@@ -97,19 +95,17 @@ export const scannerService = {
             }
 
             if (finalData) {
-                // Kiểm tra AreaId (giữ nguyên logic của bạn)
-                if (finalData.areaId !== dataUser.userAreaId) {
-                    await presentAlert.presentAlert('Lỗi', '', `Mã QR không đúng khu vực!`);
-                    return;
-                }
+
+                console.log(finalData);
 
                 store.commit('SET_DATASCANQR', finalData);
                 await storageService.set('data_scanqr', finalData);
                 await storageService.set('currentTime_scanqr', currentTimeString);
 
-                setTimeout(() => {
-                    router.replace('/checkpoint/create');
-                }, 100);
+                router.replace({
+                    path: '/checkpoint/create',
+                    query: { t: Date.now() }
+                });
             } else {
                 await presentAlert.presentAlert('Thông báo', '', 'Không tìm thấy thông tin điểm này trong dữ liệu hệ thống.');
             }

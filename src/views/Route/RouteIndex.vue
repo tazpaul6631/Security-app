@@ -10,25 +10,33 @@
         </ion-header>
 
         <ion-content>
-            <transition name="fade-route" mode="out-in">
+            <div v-if="isLoading" class="ion-padding ion-text-center">
+                <ion-spinner name="crescent"></ion-spinner>
+                <p>Đang tải lộ trình...</p>
+            </div>
 
+            <transition v-else name="fade-route" mode="out-in">
                 <div v-if="currentActiveRoute" :key="currentActiveRoute.routeId">
                     <ion-card class="inspection-grid-card">
                         <ion-card-header>
                             <ion-card-title>{{ currentActiveRoute.routeName }}</ion-card-title>
                             <ion-card-subtitle>
-                                Mã: {{ currentActiveRoute.routeCode }} | Giờ trực: {{ currentActiveRoute.psHour }}h
+                                Mã: {{ currentActiveRoute.routeCode }} | Giờ trực: {{ currentActiveRoute.psHourFrom }}h
                             </ion-card-subtitle>
                         </ion-card-header>
 
                         <ion-card-content>
                             <card-route-points :details="currentActiveRoute.routeDetails" />
 
-                            <div class="route-actions-bar">
-                                <ion-button color="success" expand="block" class="btn-continue"
+                            <div class="route-actions-bar active-controls">
+                                <ion-button color="danger" @click="confirmCancelRoute" class="btn-cancel">
+                                    <ion-icon slot="start" :icon="trashOutline"></ion-icon>
+                                    HỦY BỎ
+                                </ion-button>
+                                <ion-button color="success" class="btn-continue"
                                     @click="handleContinueScanning(currentActiveRoute.routeId)">
                                     <ion-icon slot="start" :icon="qrCodeOutline"></ion-icon>
-                                    BẮT ĐẦU QUÉT LỘ TRÌNH
+                                    SCAN
                                 </ion-button>
                             </div>
                         </ion-card-content>
@@ -36,12 +44,15 @@
                 </div>
 
                 <div v-else :key="'none-' + currentHour" class="ion-padding ion-text-center no-route-container">
-                    <ion-icon :icon="calendarOutline" style="font-size: 64px; color: #ccc;"></ion-icon>
-                    <h3>Không có lộ trình</h3>
-                    <p>Hiện không có lộ trình nào vào khung giờ {{ currentHour }}h.</p>
-                    <ion-button fill="clear" @click="router.replace('/home')">Quay lại trang chủ</ion-button>
+                    <div class="no-route-content">
+                        <ion-icon :icon="calendarOutline" class="big-icon"></ion-icon>
+                        <h3>Không có lộ trình</h3>
+                        <p>Hiện không có lộ trình nào vào khung giờ <strong>{{ currentHour }}h</strong>.</p>
+                        <ion-button fill="outline" @click="router.replace('/home')" class="ion-margin-top">
+                            Quay lại trang chủ
+                        </ion-button>
+                    </div>
                 </div>
-
             </transition>
 
             <ion-alert :is-open="isCancelAlertOpen" header="Cảnh báo!"
@@ -52,19 +63,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onUnmounted, watch } from 'vue';
+import { ref, computed, onUnmounted, onMounted, watch } from 'vue';
 import { useStore } from 'vuex';
 import { useRouter } from 'vue-router';
 import {
     IonPage, IonHeader, IonToolbar, IonTitle, IonIcon, IonButtons, IonBackButton,
     IonCardContent, IonContent, IonAlert, IonButton, IonCard, IonCardHeader,
-    IonCardSubtitle, IonCardTitle
+    IonCardSubtitle, IonCardTitle, IonSpinner
 } from '@ionic/vue';
-import { qrCodeOutline, calendarOutline } from 'ionicons/icons';
+import { qrCodeOutline, calendarOutline, trashOutline } from 'ionicons/icons';
 import CardRoutePoints from '@/components/CardRoutePoints.vue';
 import { scannerService } from '@/services/scanner.service';
 
-// Interfaces
+// --- Interfaces ---
 interface RouteDetail {
     rdId: number;
     cpId: number;
@@ -76,77 +87,125 @@ interface Route {
     routeId: number;
     routeName: string;
     routeCode: string;
-    psHour: number;
+    psHourFrom: number;
+    psHourTo: number;
     routeDetails: RouteDetail[];
     areaId: number;
     roleId: number;
+    psId: number;
 }
 
 const store = useStore();
 const router = useRouter();
 const isCancelAlertOpen = ref(false);
+const isLoading = ref(true);
+const isScanning = ref(false);
+
+// Giờ hiện tại - Reactive
 const currentHour = ref(new Date().getHours());
 let timer: any = null;
 
-// Logic cập nhật giờ realtime
-// onMounted(() => {
-//     // Check mỗi 10 giây để đảm bảo giao diện nhảy ngay khi đổi giờ
-//     timer = setInterval(() => {
-//         const now = new Date();
-//         const hourNow = now.getHours();
-//         if (hourNow !== currentHour.value) {
-//             console.log("Phát hiện đổi giờ hệ thống:", hourNow);
-//             currentHour.value = hourNow;
-//             // Khi currentHour đổi, computed currentActiveRoute sẽ tự tính toán lại
-//         }
-//     }, 10000);
-// });
+// --- Logic Cập nhật Giờ & Lộ trình ---
 
-onUnmounted(() => {
-    if (timer) clearInterval(timer);
+const updateSystemTime = () => {
+    const now = new Date();
+    const hourNow = now.getHours();
+    if (hourNow !== currentHour.value) {
+        console.log("⏰ Đã sang giờ mới hoặc phát hiện giờ hệ thống thay đổi:", hourNow);
+        currentHour.value = hourNow;
+    }
+};
+
+// Xử lý khi người dùng mở lại App từ chế độ nền (Background)
+const handleAppWakeUp = () => {
+    if (document.visibilityState === 'visible') {
+        updateSystemTime();
+    }
+};
+
+onMounted(async () => {
+    try {
+        // Khôi phục dữ liệu từ Store
+        const tasks = [];
+        if (!store.state.dataListRoute?.length) tasks.push(store.dispatch('restoreListRoute'));
+        if (!store.state.dataUser) tasks.push(store.dispatch('restoreUser'));
+
+        if (tasks.length > 0) await Promise.all(tasks);
+    } catch (e) {
+        console.error("Lỗi khởi tạo dữ liệu:", e);
+    } finally {
+        isLoading.value = false;
+    }
+
+    // Kiểm tra giờ ngay lập tức
+    updateSystemTime();
+
+    // Lắng nghe sự kiện "Wake up" (Rất quan trọng cho Mobile)
+    window.addEventListener('visibilitychange', handleAppWakeUp);
+    window.addEventListener('focus', updateSystemTime);
+
+    // Timer dự phòng check mỗi 30 giây (Cân bằng giữa chính xác và tiết kiệm pin)
+    timer = setInterval(updateSystemTime, 30000);
 });
 
+onUnmounted(() => {
+    // Dọn dẹp sạch sẽ tránh Memory Leak
+    if (timer) clearInterval(timer);
+    window.removeEventListener('visibilitychange', handleAppWakeUp);
+    window.removeEventListener('focus', updateSystemTime);
+});
+
+// --- Computed & Methods ---
+// Sửa lại Computed currentActiveRoute trong RoutePage.vue
 const currentActiveRoute = computed<Route | null>(() => {
-    const routes = (store.state.dataListRoute || []) as Route[];
+    // Ép computed phụ thuộc vào toàn bộ mảng dataListRoute
+    // Khi bạn dùng [...spread] ở store, biến này sẽ thay đổi và trigger chạy lại ở đây
+    const routes = store.state.dataListRoute;
     const userData = store.state.dataUser;
+    console.log("🔄 Trang Cha: dataListRoute vừa thay đổi tham chiếu, đang tính lại Route...");
+    if (!routes || !routes.length || !userData) return null;
 
-    const uRole = Number(userData?.userRoleId);
-    const uArea = Number(userData?.userAreaId);
+    const uRole = Number(userData.userRoleId);
+    const uArea = Number(userData.userAreaId);
+    const hNow = currentHour.value;
 
-    if (!routes.length || isNaN(uRole) || isNaN(uArea)) return null;
+    const foundRoute = routes.find((r: any) => {
+        const areaMatch = Number(r.areaId) === uArea;
+        const roleMatch = Number(r.roleId) === uRole;
+        const hourMatch = hNow >= Number(r.psHourFrom) && hNow <= Number(r.psHourTo);
+        return areaMatch && roleMatch && hourMatch;
+    });
+    console.log(foundRoute);
+    store.commit('SET_PSID', foundRoute.psId)
+    console.log("📍 Lộ trình hiện tại:", foundRoute?.routeName, "Chi tiết:", foundRoute?.routeDetails);
 
-    // Tìm route khớp Role, Area và GIỜ HIỆN TẠI
-    const found = routes.find(r =>
-        Number(r.areaId) === uArea &&
-        Number(r.roleId) === uRole &&
-        Number(r.psHour) === currentHour.value
-    );
-
-    return found || null;
+    // Quan trọng: Trả về một bản sao sâu (Deep copy) nếu cần để cắt đứt tham chiếu cũ
+    return foundRoute ? { ...foundRoute } : null;
 });
 
 const handleContinueScanning = async (routeId: number) => {
-    setTimeout(async () => {
-        try {
-            await scannerService.startScanning(store, router, routeId);
-        } catch (error) {
-            console.error("Lỗi scanner:", error);
-        }
-    }, 300);
+    if (isScanning.value) return;
+    isScanning.value = true;
+    try {
+        // Giả sử sau khi quét xong, scannerService trả về cpId vừa quét
+        await scannerService.startScanning(store, router, routeId);
+    } catch (error) {
+        console.error("Lỗi scanner:", error);
+    } finally {
+        isScanning.value = false;
+    }
 };
 
-// Theo dõi để log thông tin khi tự động nhảy
-watch(currentActiveRoute, (newVal, oldVal) => {
-    if (newVal && oldVal && newVal.routeId !== oldVal.routeId) {
-        console.log("Đã tự động chuyển lộ trình mới:", newVal.routeName);
-    }
-});
+const confirmCancelRoute = () => {
+    isCancelAlertOpen.value = true;
+};
 
 const cancelButtons = [
     { text: 'Đóng', role: 'cancel' },
     {
         text: 'Đồng ý hủy',
         role: 'confirm',
+        cssClass: 'alert-button-confirm',
         handler: () => store.dispatch('resetCurrentRoute')
     }
 ];
@@ -157,8 +216,11 @@ ion-toolbar {
     padding: 0 !important;
 }
 
-.no-route-container {
-    margin-top: 100px;
+/* Layout */
+.active-controls {
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
 }
 
 .route-actions-bar {
@@ -167,32 +229,46 @@ ion-toolbar {
     border-top: 1px dashed #ddd;
 }
 
+.btn-cancel,
 .btn-continue {
     --border-radius: 8px;
     height: 50px;
     font-weight: bold;
+    flex: 1;
 }
 
-/* Hiệu ứng Fade mượt mà khi đổi Route */
+/* No Route State */
+.no-route-container {
+    height: 60vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.big-icon {
+    font-size: 80px;
+    color: #cbd5e0;
+    margin-bottom: 16px;
+}
+
+/* Animations */
 .fade-route-enter-active,
 .fade-route-leave-active {
-    transition: all 0.5s ease;
+    transition: all 0.4s ease;
 }
 
 .fade-route-enter-from {
     opacity: 0;
-    transform: translateY(10px);
-    /* Bay nhẹ từ dưới lên */
+    transform: translateY(15px);
 }
 
 .fade-route-leave-to {
     opacity: 0;
-    transform: translateY(-10px);
-    /* Bay nhẹ lên trên rồi biến mất */
+    transform: translateY(-15px);
 }
 
-/* Các style cũ của bạn giữ nguyên */
 .inspection-grid-card {
-    transition: box-shadow 0.3s ease;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    border-radius: 12px;
 }
 </style>

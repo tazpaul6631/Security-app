@@ -14,6 +14,7 @@ export default {
     console.log(data);
 
     return request.post(`/PointReport/create`, {
+      psId: data.psId,
       routeId: data.routeId,
       rdId: data.rdId,
       prHasProblem: data.prHasProblem,
