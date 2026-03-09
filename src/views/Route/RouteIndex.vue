@@ -111,7 +111,7 @@ const updateSystemTime = () => {
     const now = new Date();
     const hourNow = now.getHours();
     if (hourNow !== currentHour.value) {
-        console.log("⏰ Đã sang giờ mới hoặc phát hiện giờ hệ thống thay đổi:", hourNow);
+        console.log("Đã sang giờ mới hoặc phát hiện giờ hệ thống thay đổi:", hourNow);
         currentHour.value = hourNow;
     }
 };
@@ -144,8 +144,8 @@ onMounted(async () => {
     window.addEventListener('visibilitychange', handleAppWakeUp);
     window.addEventListener('focus', updateSystemTime);
 
-    // Timer dự phòng check mỗi 30 giây (Cân bằng giữa chính xác và tiết kiệm pin)
-    timer = setInterval(updateSystemTime, 30000);
+    // Timer dự phòng check mỗi 5 giây (Cân bằng giữa chính xác và tiết kiệm pin)
+    timer = setInterval(updateSystemTime, 5000);
 });
 
 onUnmounted(() => {
@@ -156,18 +156,17 @@ onUnmounted(() => {
 });
 
 // --- Computed & Methods ---
-// Sửa lại Computed currentActiveRoute trong RoutePage.vue
 const currentActiveRoute = computed<Route | null>(() => {
-    // Ép computed phụ thuộc vào toàn bộ mảng dataListRoute
-    // Khi bạn dùng [...spread] ở store, biến này sẽ thay đổi và trigger chạy lại ở đây
     const routes = store.state.dataListRoute;
     const userData = store.state.dataUser;
-    console.log("🔄 Trang Cha: dataListRoute vừa thay đổi tham chiếu, đang tính lại Route...");
+    console.log("Trang Cha: dataListRoute vừa thay đổi tham chiếu, đang tính lại Route...");
     if (!routes || !routes.length || !userData) return null;
 
     const uRole = Number(userData.userRoleId);
     const uArea = Number(userData.userAreaId);
     const hNow = currentHour.value;
+
+    console.log(routes);
 
     const foundRoute = routes.find((r: any) => {
         const areaMatch = Number(r.areaId) === uArea;
@@ -176,8 +175,8 @@ const currentActiveRoute = computed<Route | null>(() => {
         return areaMatch && roleMatch && hourMatch;
     });
     console.log(foundRoute);
-    store.commit('SET_PSID', foundRoute.psId)
-    console.log("📍 Lộ trình hiện tại:", foundRoute?.routeName, "Chi tiết:", foundRoute?.routeDetails);
+    store.commit('SET_PSID', foundRoute?.psId)
+    console.log("Lộ trình hiện tại:", foundRoute?.routeName, "Chi tiết:", foundRoute?.routeDetails);
 
     // Quan trọng: Trả về một bản sao sâu (Deep copy) nếu cần để cắt đứt tham chiếu cũ
     return foundRoute ? { ...foundRoute } : null;

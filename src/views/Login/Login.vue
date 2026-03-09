@@ -61,9 +61,9 @@ import storageService from '@/services/storage.service';
 import CheckPointScanQr from '@/api/CheckPointScanQr';
 import PointReport from '@/api/PointReport';
 import AreaBU from '@/api/AreaBU';
-import RouteList from '@/api/RouteList';
 import ReportNoteCategory from '@/api/ReportNoteCategory';
 import PatrolShiftView from '@/api/PatrolShiftView';
+import RouteDetailView from '@/api/RouteDetailView';
 
 const router = useRouter();
 const store = useStore();
@@ -98,6 +98,7 @@ const hashPassword = (password: string) => {
 const handleLogin = async () => {
     if (isButtonDisabled.value) return;
 
+    let psId = null;
     isLoading.value = true;
     errorMessage.value = '';
 
@@ -145,6 +146,7 @@ const handleLogin = async () => {
                     area_bu: () => AreaBU.postAreaBU(),
                     list_route: () => PatrolShiftView.postPatrolShiftView(userData),
                     report_note_category: () => ReportNoteCategory.getReportNoteCategory(),
+                    base_point_report: () => PointReport.postBasePointReportView(psId),
                 };
                 await store.dispatch('syncAllData', apiList);
 

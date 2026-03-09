@@ -4,8 +4,8 @@ export default {
   postPointReportView() {
     return request.post('/PointReportView/getlist', {});
   },
-  postPointReport(id: any) {
-    return request.post('/PointReportView/getlist', { cpId: id });
+  postBasePointReportView(id: any) {
+    return request.post('/PointReportView/getbaselist', { psId: id });
   },
   getPointReportId(id: any) {
     return request.get(`/PointReportView/getone/${id}`);
@@ -19,10 +19,9 @@ export default {
       rdId: data.rdId,
       prHasProblem: data.prHasProblem,
       createdAt: data.createdAt,
-      prNote: data.prNote || 'Không có vấn đề gì',
       createdBy: data.createdBy,
       scanAt: data.scanAt,
-      images: data.images
+      noteGroups: data.noteGroups
     })
   }
 };

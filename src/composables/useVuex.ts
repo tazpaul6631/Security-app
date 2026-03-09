@@ -11,6 +11,7 @@ const store = createStore({
       dataCheckpointsId: [],
       dataAreaBU: [],
       dataListRoute: [],
+      dataBasePointReportView: [],
       dataReportNoteCategory: [],
       dataUser: null,
       dataScanQr: null,
@@ -64,9 +65,14 @@ const store = createStore({
         // Cập nhật đúng các field dùng để so sánh giờ
         psHourFrom: Number(route.psHourFrom),
         psHourTo: Number(route.psHourTo),
-
-        // Giữ lại psHour nếu các màn hình khác có dùng
         psHour: route.psHour ? Number(route.psHour) : null
+      }));
+    },
+    SET_DATA_BASE_POINT_REPORT_VIEW(state: any, data) {
+      const rawData = Array.isArray(data) ? data : (data?.data || []);
+
+      state.dataBasePointReportView = rawData.map((route: any) => ({
+        ...route
       }));
     },
     SET_DATAUSER(state, data) {
@@ -214,7 +220,7 @@ const store = createStore({
 
       // Lưu xuống SQLite ngay để đồng bộ
       storageService.set('list_route', state.dataListRoute);
-      console.log("🔄 Store: Đã reset lộ trình về 0");
+      console.log("Store: Đã reset lộ trình về 0");
     },
 
     // Dùng để dọn sạch bộ nhớ RAM khi người dùng bấm Đăng Xuất
@@ -224,6 +230,7 @@ const store = createStore({
       state.dataCheckpointsId = []
       state.dataAreaBU = []
       state.dataListRoute = []
+      state.dataBasePointReportView = []
       state.dataReportNoteCategory = []
       state.dataUser = null
       state.dataScanQr = null
@@ -250,6 +257,7 @@ const store = createStore({
         { name: 'AreaBU', key: 'area_bu', isLarge: false, mutation: 'SET_DATA_AREA_BU' },
         { name: 'ListRoute', key: 'list_route', isLarge: false, mutation: 'SET_DATA_LIST_ROUTE' },
         { name: 'ReportNoteCategory', key: 'report_note_category', isLarge: false, mutation: 'SET_DATA_REPORT_NOTE_CATEGORY' },
+        { name: 'BasePointReportView', key: 'base_point_report', isLarge: false, mutation: 'SET_DATA_BASE_POINT_REPORT_VIEW' },
       ];
 
       commit('SET_SYNC_STATUS', { progress: 0, message: 'Khởi động đồng bộ...', isSyncing: true });
@@ -318,12 +326,31 @@ const store = createStore({
           dispatch('restoreAreaBU'),
           dispatch('restoreListRoute'),
           dispatch('restoreRouteId'),
-          dispatch('restoreReportNoteCategory')
+          dispatch('restoreReportNoteCategory'),
+          dispatch('restoreBasePointReportView')
         ]);
       } catch (e) {
         console.error("Lỗi khi khởi tạo Store:", e);
       } finally {
         commit('SET_HYDRATED', true);
+      }
+    },
+
+    // --- CÁC HÀM RESTORE TỪ SQLITE LÊN VUEX KHI F5 ---
+    async restoreBasePointReportView({ commit, state }) {
+      if (!state.dataBasePointReportView || state.dataBasePointReportView.length === 0) {
+        let response = await storageService.get('base_point_report');
+
+        if (typeof response === 'string') {
+          try { response = JSON.parse(response); } catch (e) { }
+        }
+
+        const actualData = response?.data ? response.data : response;
+
+        if (actualData) {
+          commit('SET_DATA_BASE_POINT_REPORT_VIEW', actualData);
+          console.log('✅ ĐÃ BƠM BASE_POINT_REPORT_VIEW VÀO VUEX:', actualData);
+        }
       }
     },
 
@@ -423,11 +450,11 @@ const store = createStore({
             commit('SET_DATA_LIST_ROUTE', actualData);
             console.log('✅ Restore List Route thành công:', actualData);
           } else {
-            console.warn('⚠️ Dữ liệu List Route không phải là mảng:', actualData);
+            console.warn('Dữ liệu List Route không phải là mảng:', actualData);
           }
         }
       } catch (error) {
-        console.error("❌ Lỗi khi restore List Route:", error);
+        console.error("Lỗi khi restore List Route:", error);
       }
     },
 

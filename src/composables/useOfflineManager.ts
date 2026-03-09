@@ -174,7 +174,7 @@ export function useOfflineManager() {
   };
 
   const uploadToServer = async (item: PendingItem): Promise<any> => {
-    // return await PointReport.createPointReport(item.data);
+    return await PointReport.createPointReport(item.data);
   };
 
   return {
