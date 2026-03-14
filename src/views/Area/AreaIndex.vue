@@ -57,6 +57,10 @@
                                                 <ion-icon class="icon-2" :icon="timeOutline"
                                                     :color="item.isOfflineDone ? 'primary' : (item.timeProblem ? 'danger' : 'success')">
                                                 </ion-icon>
+
+                                                <ion-icon class="icon-2" :icon="footstepsOutline"
+                                                    :color="item.isOfflineDone ? 'primary' : (item.shiftProblem ? 'danger' : 'success')">
+                                                </ion-icon>
                                             </div>
                                         </ion-label>
                                     </ion-col>
@@ -161,11 +165,12 @@ import {
     onIonViewWillEnter, IonProgressBar, IonSkeletonText, IonInfiniteScroll,
     IonInfiniteScrollContent, IonButton, IonModal, IonBadge
 } from '@ionic/vue';
-import { calendarOutline, newspaperOutline, timeOutline } from "ionicons/icons";
+import { calendarOutline, footstepsOutline, newspaperOutline, timeOutline } from "ionicons/icons";
 import { computed, ref, nextTick, watch } from 'vue';
 import { useStore } from 'vuex';
 import presentAlert from '@/mixins/presentAlert';
 import AreaBU from '@/api/AreaBU';
+import storageService from '@/services/storage.service';
 
 const store = useStore();
 
@@ -242,62 +247,44 @@ watch(() => dataPR.value.details, (newVal) => {
 // --- 3. METHODS CHÍNH (GỌI API THEO ĐIỀU KIỆN) ---
 const fetchAreasData = async (areaId: number) => {
     isLoading.value = true;
-
     try {
         const userInfo = store.state.dataUser?.data || store.state.dataUser || {};
         const isAdmin = userInfo.userRoleIsAdmin === true;
         const currentUserId = userInfo.userId;
 
         if (isOnline.value) {
-            // ONLINE 
             const payload: any = { areaId: areaId };
-            if (!isAdmin) {
-                payload.userId = currentUserId;
-            }
-
-            console.log('online');
+            if (!isAdmin) payload.userId = currentUserId;
 
             const response = await AreaBU.postAreaBU(payload);
             const fetchedAreas = Array.isArray(response?.data) ? response.data : (response?.data?.data || []);
-            const foundArea = fetchedAreas.find((item: any) => item.areaId === areaId) || fetchedAreas[0];
 
-            let onlineShifts = foundArea ? (foundArea.patrolShifts || []) : [];
-            currentOptions.value = onlineShifts;
+            // QUAN TRỌNG: Lưu lại cho Offline
+            store.commit('SET_DATA_AREA_BU', fetchedAreas);
+            await storageService.set('area_bu', fetchedAreas);
+
+            const foundArea = fetchedAreas.find((item: any) => item.areaId === areaId);
+            currentOptions.value = foundArea ? (foundArea.patrolShifts || []) : [];
         } else {
-            // OFFLINE 
+            // Lấy từ Store (Đã được Hydrate từ SQLite khi khởi động App)
             const rawData = store.state.dataAreaBU;
-            let areas = [];
+            let areas = Array.isArray(rawData) ? rawData : (rawData?.data || []);
+            if (areas[0]?.data) areas = areas[0].data;
 
-            // 1. Xử lý cẩn thận cấu trúc data lấy từ store (Cover mọi trường hợp lồng data)
-            if (Array.isArray(rawData) && rawData.length > 0 && rawData[0].data) {
-                areas = rawData[0].data; // Dạng [{ data: [...] }]
-            } else if (Array.isArray(rawData)) {
-                areas = rawData; // Dạng [...]
-            } else {
-                areas = rawData?.data || []; // Dạng { data: [...] }
-            }
-
-            // 2. Tìm Area: Ép kiểu Number để chắc chắn không bị lỗi '1' !== 1
             const foundArea = areas.find((item: any) => Number(item.areaId) === Number(areaId));
             let offlineShifts = foundArea ? (foundArea.patrolShifts || []) : [];
 
-            console.log('offline - Shifts gốc tìm được:', offlineShifts);
-
-            // 3. Xử lý phân quyền User
+            // Logic phân quyền giữ nguyên
             if (!isAdmin) {
-                // Chỉ filter NẾU data shift thực sự có chứa trường `userId`
-                // Nếu không có, mặc định lấy toàn bộ vì data store đã được API lọc từ trước lúc Online
                 const hasUserIdProp = offlineShifts.length > 0 && offlineShifts[0].hasOwnProperty('userId');
-
                 if (hasUserIdProp) {
                     offlineShifts = offlineShifts.filter((shift: any) => shift.userId === currentUserId);
                 }
             }
-
             currentOptions.value = offlineShifts;
         }
     } catch (error) {
-        console.error("Lỗi khi tải danh sách:", error);
+        console.error("Lỗi:", error);
     } finally {
         isLoading.value = false;
     }

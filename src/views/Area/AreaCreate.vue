@@ -410,7 +410,10 @@ const removeGroupPhoto = (gIdx: number, pIdx: number) => {
 };
 
 // --- Submit Logic (Quan trọng nhất) ---
+const isSubmitting = ref(false);
 const handleSubmit = async (): Promise<void> => {
+  if (isSubmitting.value) return;
+  isSubmitting.value = true;
   const now = new Date();
   const currentTimeString = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().slice(0, 19);
 
@@ -517,6 +520,8 @@ const handleSubmit = async (): Promise<void> => {
   } catch (error) {
     await loading.dismiss();
     console.error("Lỗi:", error);
+  } finally {
+    isSubmitting.value = false;
   }
 };
 
@@ -528,7 +533,7 @@ const handleGoBack = async () => {
   const alert = await alertController.create({
     header: 'Cảnh báo',
     message: 'Bạn đang trong ca trực, hãy hoàn thành các điểm còn lại!',
-    buttons: ['Tiếp tục làm việc']
+    buttons: ['Đã hiểu']
   });
   await alert.present();
 };

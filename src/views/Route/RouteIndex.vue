@@ -23,10 +23,9 @@
                             <ion-card-subtitle>
                                 Mã: {{ currentActiveRoute.routeCode }} | Giờ trực: {{ currentActiveRoute.psHourFrom }}h
                                 <br />
-                                <span class="timer-display" :class="timerColorClass"
-                                    v-if="currentActiveRoute.planSecond !== undefined">
-                                    <ion-icon class="icon-clock" :icon="timeOutline"></ion-icon> Thời gian: {{
-                                        formattedTime }}
+                                <span class="timer-display" :class="timerColorClass" v-if="formattedTime">
+                                    <ion-icon class="icon-clock" :icon="timeOutline"></ion-icon>
+                                    Thời gian: {{ formattedTime }}
                                 </span>
                             </ion-card-subtitle>
                         </ion-card-header>
@@ -95,7 +94,7 @@ import { useRouteTimer } from '@/composables/useRouteTimer';
 import PatrolShift from '@/api/PatrolShift';
 
 // Lấy biến và hàm từ Global Timer ra sử dụng
-const { formattedTime, timerColorClass, clearTimer, restoreTimer } = useRouteTimer();
+const { formattedTime, timerColorClass, clearTimer, restoreTimer, stopTimer, remainingSeconds, currentTimerRouteId } = useRouteTimer();
 
 // --- Interfaces ---
 interface RouteDetail {
@@ -170,14 +169,31 @@ const currentActiveRoute = computed(() => {
 // ==========================================
 watch(() => currentActiveRoute.value, async (newRoute) => {
     if (newRoute && newRoute.psId) {
-        console.log("Đã cập nhật psId mới cho ca trực:", newRoute.psId);
         store.commit('SET_PSID', newRoute.psId);
-        // Có thể lưu thêm vào storage nếu cần dự phòng reload page
         storageService.set('current_ps_id', newRoute.psId);
     }
 
     if (newRoute) {
-        await restoreTimer(newRoute.routeId);
+        // 1. Kiểm tra xem ca này đã có điểm nào quét chưa (status = 1)
+        const hasStarted = newRoute.routeDetails.some((p: any) => p.status === 1);
+
+        // 2. Hoặc kiểm tra xem nó có đang bị khóa dở dang không
+        const isUnfinished = Number(newRoute.routeId) === Number(lockedRouteId.value);
+
+        // CHỈ KHÔI PHỤC NẾU THỰC SỰ ĐÃ BẮT ĐẦU LÀM
+        if (hasStarted || isUnfinished) {
+            await restoreTimer(newRoute.routeId);
+        } else {
+            // NẾU CA MỚI TINH (Chưa làm gì): Đảm bảo timer phải dừng và sạch sẽ
+            if (remainingSeconds.value > 0 || currentTimerRouteId !== null) {
+                await clearTimer(newRoute.routeId);
+            }
+        }
+    } else {
+        // Nếu không có lộ trình nào hoạt động, cũng dọn dẹp luôn
+        stopTimer();
+        remainingSeconds.value = 0;
+        currentTimerRouteId.value = null;
     }
 }, { immediate: true });
 
@@ -217,8 +233,6 @@ let scanBuffer = '';
 let scanTimeout: any = null;
 
 const handleHardwareScan = (e: KeyboardEvent) => {
-    console.log(e);
-
     if (e.key === 'Enter') {
         if (scanBuffer.length > 3 && currentActiveRoute.value) {
             processScannedData(scanBuffer, currentActiveRoute.value.routeId);
@@ -393,7 +407,7 @@ const cancelButtons = [
                 console.warn("Không thể báo hủy lên Server (có thể đang Offline), nhưng vẫn tiến hành xóa Local.");
             }
 
-            clearTimer(currentRoute.routeId);
+            await clearTimer(currentRoute.routeId);
 
             // Xóa sạch dấu vết trong Store và SQLite
             await store.dispatch('resetCurrentRoute');

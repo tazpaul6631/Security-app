@@ -65,7 +65,8 @@
             <ion-item>
               <ion-label>
                 <h2>Người báo cáo: <strong>{{ getPrIdData.reportName }}</strong></h2>
-                <h3>Ngày báo cáo: {{ formatDate(getPrIdData.reportAt) }}</h3>
+                <h3 :class="getPrIdData.shiftProblem ? 'shift-problem' : ''">Ngày báo cáo: {{
+                  formatDate(getPrIdData.reportAt) }}</h3>
               </ion-label>
             </ion-item>
 
@@ -420,7 +421,8 @@ h3 {
   text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.8);
 }
 
-.time-problem {
+.time-problem,
+.shift-problem {
   color: red;
 }
 </style>

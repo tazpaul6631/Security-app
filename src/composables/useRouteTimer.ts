@@ -5,16 +5,16 @@ import storageService from '@/services/storage.service';
 const remainingSeconds = ref(0);
 const isTimerRunning = ref(false);
 let intervalId: any = null;
-let currentTimerRouteId: string | number | null = null;
+const currentTimerRouteId = ref<string | number | null>(null);
 
 export function useRouteTimer() {
 
     const startTimer = async (routeId: string | number, planSecond: number) => {
         // Nếu đang chạy đúng lộ trình này rồi thì không chạy lại (tránh loạn nhịp)
-        if (isTimerRunning.value && currentTimerRouteId === routeId) return;
+        if (isTimerRunning.value && currentTimerRouteId.value === routeId) return;
 
         // Lưu routeId hiện tại
-        currentTimerRouteId = routeId;
+        currentTimerRouteId.value = routeId;
 
         // Kiểm tra xem trước đó đã lưu thời gian kết thúc trong SQLite chưa (chống load lại app bị mất giờ)
         const savedEndTime = await storageService.get(`timer_end_${routeId}`);
@@ -42,13 +42,13 @@ export function useRouteTimer() {
     };
 
     const restoreTimer = async (routeId: string | number) => {
-        if (isTimerRunning.value && currentTimerRouteId === routeId) return;
+        if (isTimerRunning.value && currentTimerRouteId.value === routeId) return;
 
         const savedEndTime = await storageService.get(`timer_end_${routeId}`);
         if (savedEndTime) {
             const now = Math.floor(Date.now() / 1000);
             if (savedEndTime > now) {
-                currentTimerRouteId = routeId;
+                currentTimerRouteId.value = routeId;
                 remainingSeconds.value = savedEndTime - now;
                 isTimerRunning.value = true;
 
@@ -78,14 +78,13 @@ export function useRouteTimer() {
     const clearTimer = async (routeId: string | number) => {
         stopTimer();
         remainingSeconds.value = 0;
-        currentTimerRouteId = null;
+        currentTimerRouteId.value = null;
         await storageService.remove(`timer_end_${routeId}`);
     };
 
     // Format thời gian MM:SS
     const formattedTime = computed(() => {
-        // Nếu không có lộ trình nào hoặc đã dọn dẹp, trả về chuỗi trống hoặc "--:--"
-        if (!currentTimerRouteId && remainingSeconds.value === 0) return '';
+        if (!currentTimerRouteId || remainingSeconds.value <= 0) return '';
 
         const m = Math.floor(remainingSeconds.value / 60);
         const s = remainingSeconds.value % 60;
@@ -109,6 +108,7 @@ export function useRouteTimer() {
         startTimer,
         stopTimer,
         clearTimer,
-        restoreTimer
+        restoreTimer,
+        currentTimerRouteId
     };
 }
