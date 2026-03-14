@@ -1,7 +1,7 @@
 <template>
   <ion-page>
     <ion-content class="custom-bg">
-      <div class="dashboard-container">
+      <div v-show="dataUser && !store.state.isSyncingOffline" class="dashboard-container">
         <div class="profile-card">
           <div class="info-row">
             <div class="icon-wrapper">
@@ -33,7 +33,7 @@
 
         <ion-grid>
           <ion-row>
-            <ion-col v-for="item in dataUser?.allowViews" :key="item.mcId" size="4" size-md="2">
+            <ion-col v-for="item in allowViews" :key="item.mcId" size="4" size-md="2">
               <div :button="true" v-if="item.roleId" class="menu-item" @click="handleClickIcon(item.mcId)">
                 <ion-icon :icon="getRoleData(item.mcId).icon" class="menu-icon" :class="getRoleData(item.mcId).color">
                 </ion-icon>
@@ -43,13 +43,18 @@
           </ion-row>
         </ion-grid>
       </div>
+
+      <div v-show="!dataUser && store.state.isSyncingOffline" class="loading-state">
+        <ion-spinner name="crescent"></ion-spinner>
+        <p>Đang tải thông tin cá nhân...</p>
+      </div>
     </ion-content>
   </ion-page>
 </template>
 
 <script setup lang="ts">
 import router from '@/router';
-import { IonPage, IonContent, IonIcon, IonGrid, IonRow, IonCol } from '@ionic/vue';
+import { IonPage, IonContent, IonIcon, IonGrid, IonRow, IonCol, IonSpinner } from '@ionic/vue';
 import {
   person, location, personCircle, people, list, barChartOutline, footstepsOutline, alertCircleOutline
 } from 'ionicons/icons';
@@ -60,6 +65,7 @@ const isOnline = computed(() => store.state.isOnline);
 const store = useStore();
 // Lấy dataUser từ Vuex, nếu không có sẽ hiển thị giá trị mặc định trong template
 const dataUser = computed(() => store.state.dataUser);
+const allowViews = computed(() => dataUser.value?.allowViews || []);
 console.log(dataUser);
 
 const listRoles = ref([
@@ -78,8 +84,14 @@ const getRoleData = (mcId: number) => {
 };
 
 const handleClickIcon = (id: number) => {
-  router.replace({ path: getRoleData(id).router })
-}
+  const role = getRoleData(id);
+  // Chỉ chuyển trang nếu tìm thấy router hợp lệ
+  if (role && role.router) {
+    router.replace({ path: role.router });
+  } else {
+    console.warn("Không tìm thấy đường dẫn cho mcId:", id);
+  }
+};
 </script>
 
 <style scoped>
@@ -271,5 +283,20 @@ ion-col {
 
 .color-grey {
   color: #62748E;
+}
+
+/* Thêm vào cuối phần style của bạn */
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 80%;
+  color: #64748b;
+}
+
+.loading-state p {
+  margin-top: 10px;
+  font-size: 14px;
 }
 </style>

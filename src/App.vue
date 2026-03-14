@@ -1,5 +1,9 @@
 <template>
   <ion-app>
+    <ion-progress-bar v-if="store.state.isSyncing && store.state.syncMode === 'silent'"
+      :value="store.state.syncProgress / 100" color="success" class="silent-progress-bar">
+    </ion-progress-bar>
+
     <div v-if="!isAppReady" class="app-loading">
       <ion-spinner name="crescent"></ion-spinner>
       <p>Đang chuẩn bị dữ liệu an ninh...</p>
@@ -10,75 +14,109 @@
 </template>
 
 <script setup lang="ts">
-import { IonApp, IonRouterOutlet, IonSpinner } from '@ionic/vue';
-import { onMounted, ref, onUnmounted } from 'vue';
+import { IonApp, IonRouterOutlet, IonSpinner, IonProgressBar } from '@ionic/vue';
+import { onMounted, ref } from 'vue';
 import { useSQLite } from '@/composables/useSQLite';
 import store from '@/composables/useVuex';
 import { Network } from '@capacitor/network';
-import type { PluginListenerHandle } from '@capacitor/core';
 import { useOfflineManager } from '@/composables/useOfflineManager';
+
+// Import APIs
+import CheckPointScanQr from '@/api/CheckPointScanQr';
+import PointReport from '@/api/PointReport';
+import AreaBU from '@/api/AreaBU';
+import ReportNoteCategory from '@/api/ReportNoteCategory';
+import PatrolShiftView from '@/api/PatrolShiftView';
 
 const { syncData } = useOfflineManager();
 const { initDatabase } = useSQLite();
 const isAppReady = ref(false);
 
-// Biến để lưu vết trạng thái mạng trước đó, tránh gọi sync trùng lặp
-let lastNetworkStatus: boolean | null = null;
-let networkHandler: PluginListenerHandle | null = null;
+// --- CHỐT CHẶN BẰNG WINDOW ĐỂ CHỐNG RE-MOUNT ---
+const getGlobalApiList = (userData: any) => ({
+  checkpoints: () => CheckPointScanQr.postCheckPointView(),
+  checkpoints_id: () => PointReport.postPointReportView(),
+  area_bu: () => AreaBU.postAreaBU({ areaId: userData.userAreaId }),
+  list_route: () => PatrolShiftView.postPatrolShiftView(userData),
+  report_note_category: () => ReportNoteCategory.getReportNoteCategory(),
+  base_point_report: () => PointReport.postBasePointReportView(0),
+});
+
+// Hàm đồng bộ an toàn dùng chung
+const safeSync = async () => {
+  if (!store.state.token || !store.state.isOnline) return;
+  console.log("🚀 Luồng đồng bộ an toàn đang chạy...");
+  try {
+    await syncData();
+    const apiList = getGlobalApiList(store.state.dataUser);
+    await store.dispatch('syncAllData', { apiList, mode: 'silent' });
+  } catch (e) {
+    console.error("Lỗi đồng bộ ngầm:", e);
+  }
+};
 
 onMounted(async () => {
-  try {
-    await initDatabase();
+  // 1. Kiểm tra khóa ngay lập tức
+  if ((window as any).APP_INITIALIZING || (window as any).APP_READY_LOCK) {
+    console.log("⚠️ Hệ thống đang khởi tạo hoặc đã sẵn sàng. Chặn luồng trùng lặp.");
+    isAppReady.value = true;
+    return;
+  }
 
-    // 1. Chỉ khôi phục Token/User trước để biết có cần chạy initApp sâu hơn không
+  // 2. Gán khóa "ĐANG KHỞI TẠO" ngay lập tức (Không await)
+  (window as any).APP_INITIALIZING = true;
+
+  try {
+    // Luồng khởi tạo chính
+    await initDatabase();
     await Promise.all([
       store.dispatch('restoreToken'),
       store.dispatch('restoreUser')
     ]);
 
-    // 2. Lấy trạng thái mạng hiện tại và GÁN NGAY vào biến chặn
     const status = await Network.getStatus();
-    lastNetworkStatus = status.connected;
     store.commit('SET_NETWORK_STATUS', status.connected);
 
-    // 3. Nếu đã đăng nhập, mới khởi tạo toàn bộ dữ liệu offline
     if (store.state.token) {
       await store.dispatch('initApp');
-
-      // Chỉ đồng bộ nếu ĐANG online và CÓ dữ liệu chờ
       if (status.connected) {
-        syncData();
+        safeSync();
       }
     }
+
+    // 3. Đăng ký Listener và khóa nó lại
+    if (!(window as any).HAS_NETWORK_LISTENER) {
+      await Network.removeAllListeners();
+      Network.addListener('networkStatusChange', (status) => {
+        // Sử dụng giá trị cũ từ store để so sánh
+        const wasOffline = store.state.isOnline === false;
+        const isNowOnline = status.connected === true;
+
+        store.commit('SET_NETWORK_STATUS', status.connected);
+
+        if (wasOffline && isNowOnline) {
+          console.log("🌐 Mạng khôi phục: Kích hoạt đồng bộ ngầm.");
+          setTimeout(() => safeSync(), 1500);
+        }
+      });
+      (window as any).HAS_NETWORK_LISTENER = true;
+    }
+
+    // 4. Hoàn tất toàn bộ khóa
+    (window as any).APP_READY_LOCK = true;
+
+  } catch (error) {
+    console.error("Lỗi khởi động:", error);
+    // Nếu lỗi, cho phép thử lại ở lần sau
+    (window as any).APP_INITIALIZING = false;
   } finally {
     isAppReady.value = true;
-  }
-
-  // 4. Lắng nghe thay đổi (Sử dụng flag lastNetworkStatus để chặn)
-  networkHandler = await Network.addListener('networkStatusChange', status => {
-    // QUAN TRỌNG: Chỉ xử lý nếu trạng thái THỰC SỰ thay đổi (ví dụ: đang lướt mạng thì mất, hoặc đang mất thì có lại)
-    if (status.connected === lastNetworkStatus) return;
-
-    const isComingOnline = status.connected && lastNetworkStatus === false;
-
-    store.commit('SET_NETWORK_STATUS', status.connected);
-    lastNetworkStatus = status.connected;
-
-    if (isComingOnline && store.state.token) {
-      console.log("Mạng vừa khôi phục, chuẩn bị đồng bộ...");
-      syncData();
-    }
-  });
-});
-
-onUnmounted(async () => {
-  if (networkHandler) {
-    await networkHandler.remove();
   }
 });
 </script>
 
 <style scoped>
+/* CSS giữ nguyên như cũ */
 .app-loading {
   display: flex;
   flex-direction: column;
@@ -88,9 +126,12 @@ onUnmounted(async () => {
   background: #f4f4f4;
 }
 
-.app-loading p {
-  margin-top: 15px;
-  color: #666;
-  font-weight: 500;
+.silent-progress-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  z-index: 9999;
 }
 </style>

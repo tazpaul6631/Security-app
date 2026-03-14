@@ -22,7 +22,18 @@ export default defineConfig({
     environment: 'jsdom'
   },
   server: {
-    host: '10.0.149.28', // Cho phép truy cập từ IP bên ngoài (quan trọng)
-    port: 8100,      // Port mặc định của Vite (hoặc port bạn đang dùng)
+    host: '0.0.0.0', // Dùng 0.0.0.0 để linh hoạt hơn IP tĩnh
+    port: 8100,
+    // THÊM ĐOẠN NÀY: Giúp HMR hoạt động ổn định qua mạng Wifi
+    hmr: {
+      host: '10.0.149.28',
+      port: 8100
+    }
+  },
+  // THÊM ĐOẠN NÀY: Tối ưu build cho mobile
+  build: {
+    chunkSizeWarningLimit: 2000,
+    cssCodeSplit: true,
+    sourcemap: false, // Tắt để build nhanh hơn và nhẹ hơn
   }
 })

@@ -292,7 +292,7 @@ const openNoteModal = ref(false);
 const currentIssues = computed(() => selectedSubCategory.value?.childs || []);
 
 // --- Offline Manager ---
-const { sendData, pendingItems, loadPendingItems, syncData, isSyncing } = useOfflineManager();
+const { sendData, pendingItems, loadPendingItems } = useOfflineManager();
 const displayItems = ref<QueueItem[]>([]);
 
 // --- Functions ---
@@ -427,23 +427,31 @@ const handleSubmit = async (): Promise<void> => {
 
   try {
     // 1. Chuyển đổi tất cả ảnh trong các Group sang Base64 để gửi API
+    const imageFileNames: string[] = []; // Mảng chứa tên file vật lý
+
     const noteGroupsPayload = await Promise.all(groupedNotes.value.map(async (group) => {
       const mappedImages = await Promise.all(group.reportImages.map(async (item) => {
         let base64Data = item.rawBase64;
-        // Nếu ảnh mới chụp/chọn chưa có base64 thì fetch nó
+
         if (!base64Data && item.preview) {
           const response = await fetch(item.preview);
           const blob = await response.blob();
           const fullBase64 = await convertBlobToBase64(blob);
           base64Data = fullBase64.split(',')[1];
         }
+
+        // --- LƯU FILE VẬT LÝ VÀO MÁY ---
+        const fileName = await ImageService.saveImage(base64Data);
+        imageFileNames.push(fileName);
+
+        // Gửi lên server vẫn cần base64 nếu đang Online
         return { priImage: base64Data, priImageType: 'jpg' };
       }));
 
       return {
         prGroup: group.prGroup,
         priImageNote: group.priImageNote,
-        reportImages: mappedImages // Đây là nơi chứa ảnh để gửi Server
+        reportImages: mappedImages
       };
     }));
 

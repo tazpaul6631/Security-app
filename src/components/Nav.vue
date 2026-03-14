@@ -12,7 +12,7 @@
 
           <div slot="end" style="display: flex; align-items: center;">
 
-            <div v-show="isSyncing" class="sync-container pulse-animation">
+            <div :style="{ visibility: isSyncing ? 'visible' : 'hidden' }" class="sync-container pulse-animation">
               <ion-spinner name="crescent" color="primary" class="small-spinner"></ion-spinner>
               <ion-text color="primary" class="sync-text">
                 ({{ pendingItems.length }})

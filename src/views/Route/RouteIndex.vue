@@ -92,6 +92,7 @@ import PatrolShiftView from '@/api/PatrolShiftView';
 // IMPORT GLOBAL TIMER
 import { useRouteTimer } from '@/composables/useRouteTimer';
 import PatrolShift from '@/api/PatrolShift';
+import { useOfflineManager } from '@/composables/useOfflineManager';
 
 // Lấy biến và hàm từ Global Timer ra sử dụng
 const { formattedTime, timerColorClass, clearTimer, restoreTimer, stopTimer, remainingSeconds, currentTimerRouteId } = useRouteTimer();
@@ -397,17 +398,35 @@ const cancelButtons = [
             const removeData = {
                 routeId: currentRoute.routeId,
                 psId: currentRoute.psId,
-                updatedBy: store.state.dataUser?.userId
+                updatedBy: store.state.dataUser?.userId,
+                isDeleteAction: true
             };
 
-            // Lệnh API có thể thành công hoặc thất bại tùy mạng
+            console.log(removeData);
+
+            await clearTimer(currentRoute.routeId);
+            const { pendingItems, loadPendingItems, removeQueueItem } = useOfflineManager();
+            await loadPendingItems();
+
+            const itemsToDelete = pendingItems.value.filter(
+                (item: any) => item.data.psId === currentRoute.psId
+            );
+            for (const item of itemsToDelete) {
+                // Xóa Mock trong Vuex
+                store.commit('REMOVE_OFFLINE_REPORT', item.id);
+                // Xóa trong SQLite
+                await removeQueueItem(item.id);
+            }
+
             try {
                 await PatrolShift.postRemovePatrolShift(removeData);
             } catch (error) {
-                console.warn("Không thể báo hủy lên Server (có thể đang Offline), nhưng vẫn tiến hành xóa Local.");
+                // NẾU LỖI (OFFLINE): Lưu lệnh xóa này vào hàng chờ
+                console.warn("Offline: Đã lưu lệnh xóa vào hàng chờ đồng bộ.");
+                const deleteQueue = (await storageService.get('offline_delete_queue')) || [];
+                deleteQueue.push(removeData);
+                await storageService.set('offline_delete_queue', deleteQueue);
             }
-
-            await clearTimer(currentRoute.routeId);
 
             // Xóa sạch dấu vết trong Store và SQLite
             await store.dispatch('resetCurrentRoute');

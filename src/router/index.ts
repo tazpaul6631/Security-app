@@ -98,30 +98,30 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to, from, next) => {
-  // 1. Hydrate an toàn
-  if (!store.state.isHydrated) {
-    try {
-      await store.dispatch('initApp');
-    } catch (e) {
-      console.error("Init App Failed", e);
-    }
+  // 1. HYDRATE THÔNG MINH: 
+  // Chỉ chạy initApp nếu chưa hydrated VÀ không phải trang login
+  // Thêm kiểm tra token để tránh việc gọi initApp thừa thãi khi chưa đăng nhập
+  if (!store.state.isHydrated && to.name !== 'login') {
+    // Nếu app chưa được nạp dữ liệu từ SQLite, nạp ngay
+    await store.dispatch('initApp');
   }
 
   const token = store.state.token;
-  // Kiểm tra meta của từng bản ghi trong route
   const requiresAuth = to.matched.some(record => record.meta.requiresAuth);
 
-  // TRƯỜNG HỢP 1: Cần auth nhưng ko có token
+  // 2. CHỐNG REDIRECT VÒNG LẶP:
+  // Nếu đang ở Home mà có sự kiện mạng làm re-check, đừng redirect lại nếu token vẫn còn
   if (requiresAuth && !token) {
     return next({ name: 'login' });
   }
 
-  // TRƯỜNG HỢP 2: Có token rồi mà vẫn vào login
   if (to.name === 'login' && token) {
     return next({ name: 'home' });
   }
 
-  // TRƯỜNG HỢP 3: Cho đi tiếp
+  // 3. XỬ LÝ TRƯỜNG HỢP CHUYỂN MẠNG:
+  // Nếu mạng khôi phục khi đang ở giữa các trang, next() ngay lập tức 
+  // để tránh việc Router bị treo bởi các tiến trình async khác của Store
   next();
 });
 

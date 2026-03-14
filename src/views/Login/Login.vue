@@ -1,6 +1,6 @@
 <template>
     <ion-page>
-        <div v-if="syncStatus.isSyncing" class="sync-overlay">
+        <div v-if="syncStatus.isSyncing && store.state.syncMode === 'overlay'" class="sync-overlay">
             <div class="sync-box">
                 <ion-text color="primary">
                     <h3>{{ syncStatus.message }}</h3>
@@ -97,14 +97,11 @@ const hashPassword = (password: string) => {
 const handleLogin = async () => {
     if (isButtonDisabled.value) return;
 
-    let psId = null;
-    let payload = null;
     isLoading.value = true;
     errorMessage.value = '';
 
     try {
-        const isOnline = store.state.isOnline; // Lấy trạng thái mạng
-
+        const isOnline = store.state.isOnline;
         const now = new Date();
         const dateInfo = {
             psDay: now.getDate(),
@@ -113,9 +110,7 @@ const handleLogin = async () => {
         };
 
         if (isOnline) {
-            // ==========================================
-            // KỊCH BẢN 1: CÓ MẠNG -> LOGIN SERVER & LƯU DANH BẠ
-            // ==========================================
+            // 1. GỌI API LOGIN
             const responseBU = await Login.postUserValidate(loginDetail);
             const result = responseBU.data;
 
@@ -125,41 +120,42 @@ const handleLogin = async () => {
                     ...dateInfo,
                 };
 
-                // 1. Quản lý phiên làm việc hiện tại (Của riêng bạn)
+                // 2. LƯU THÔNG TIN PHIÊN LÀM VIỆC (BẮT BUỘC TRƯỚC KHI SYNC)
                 store.commit('SET_DATAUSER', userData);
                 store.commit('SET_TOKEN', userData.userPassword);
                 await storageService.set('user_data', userData);
                 await storageService.set('user_token', userData.userPassword);
 
-                // 2. Cập nhật người này vào "Danh bạ Offline"
+                // 3. CẬP NHẬT DANH BẠ OFFLINE
                 let offlineUsers = await storageService.get('offline_users_dict') || {};
                 offlineUsers[loginDetail.userCode] = {
                     profile: userData,
-                    hashedPassword: hashPassword(loginDetail.userPassword) // Băm pass nhập vào
+                    hashedPassword: hashPassword(loginDetail.userPassword)
                 };
                 await storageService.set('offline_users_dict', offlineUsers);
 
-                // 3. Đồng bộ data ban đầu
+                // 4. CHUẨN BỊ APILIST ĐỂ ĐỒNG BỘ DỮ LIỆU OFFLINE
+                // Lưu ý: psId và payload phải lấy từ userData vừa login thành công
                 const apiList = {
                     checkpoints: () => CheckPointScanQr.postCheckPointView(),
                     checkpoints_id: () => PointReport.postPointReportView(),
-                    area_bu: () => AreaBU.postAreaBU(payload),
+                    area_bu: () => AreaBU.postAreaBU({ areaId: userData.userAreaId }),
                     list_route: () => PatrolShiftView.postPatrolShiftView(userData),
                     report_note_category: () => ReportNoteCategory.getReportNoteCategory(),
-                    base_point_report: () => PointReport.postBasePointReportView(psId),
+                    base_point_report: () => PointReport.postBasePointReportView(0), // 0 để lấy mặc định hoặc dùng ID cụ thể
                 };
-                await store.dispatch('syncAllData', apiList);
 
-                // 4. Vào app
+                // 5. KÍCH HOẠT ĐỒNG BỘ (Sẽ tự hiện sync-overlay nhờ computed syncStatus)
+                await store.dispatch('syncAllData', { apiList: apiList, mode: 'overlay' });
+
+                // 6. VÀO APP
                 router.replace('/home');
             } else {
                 errorMessage.value = result?.message || 'Thông tin đăng nhập chưa chính xác';
             }
 
         } else {
-            // ==========================================
-            // KỊCH BẢN 2: KHÔNG CÓ MẠNG -> XÁC THỰC CỤC BỘ
-            // ==========================================
+            // KỊCH BẢN OFFLINE: Giữ nguyên logic xác thực cục bộ của bạn
             const offlineUsers = await storageService.get('offline_users_dict');
 
             if (!offlineUsers || !offlineUsers[loginDetail.userCode]) {
@@ -168,22 +164,17 @@ const handleLogin = async () => {
                 return;
             }
 
-            // Lấy hồ sơ tài khoản và băm mật khẩu vừa nhập
             const savedAccount = offlineUsers[loginDetail.userCode];
             const inputHashed = hashPassword(loginDetail.userPassword);
 
-            // Xác thực
             if (inputHashed === savedAccount.hashedPassword) {
-                console.log('✅ Đăng nhập Offline thành công!');
-
-                // Khôi phục đúng hồ sơ của người này làm phiên hiện tại
                 store.commit('SET_DATAUSER', savedAccount.profile);
                 store.commit('SET_TOKEN', savedAccount.profile.userPassword);
                 await storageService.set('user_data', savedAccount.profile);
                 await storageService.set('user_token', savedAccount.profile.userPassword);
 
+                // Quan trọng: Phải khôi phục dữ liệu từ SQLite lên RAM
                 await store.dispatch('initApp');
-                // Vào thẳng app
                 router.replace('/home');
             } else {
                 errorMessage.value = 'Mật khẩu không chính xác (Offline)!';

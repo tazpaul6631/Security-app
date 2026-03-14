@@ -125,14 +125,15 @@ import {
   IonHeader, IonToolbar, IonTitle, IonCard, IonCardHeader, IonCardTitle,
   IonCardSubtitle, IonCardContent, IonCol, IonGrid, IonRow, IonPage,
   IonContent, IonLabel, IonImg, IonModal, IonButtons, IonBackButton,
-  IonSpinner, IonList, IonItem, IonIcon, IonButton
+  IonList, IonItem, IonIcon, IonButton
 } from '@ionic/vue'
 import { calendarOutline, documentTextOutline } from 'ionicons/icons';
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue'; // Thêm watch
 import { useStore } from 'vuex';
 import { Swiper, SwiperSlide } from 'swiper/vue';
 import 'swiper/css';
 import '@ionic/vue/css/ionic-swiper.css';
+import { ImageService } from '@/services/image.service'; // Đảm bảo import này đúng
 
 const store = useStore();
 
@@ -140,64 +141,72 @@ const store = useStore();
 const isModalOpen = ref(false);
 const currentSlideIndex = ref(0);
 
+// Chuyển listGroups thành ref để xử lý logic async (đọc file từ máy)
+const listGroups = ref<any[]>([]);
+
 /**
  * Lấy data từ Store dựa trên ID từ URL
- * Sử dụng computed để tự động cập nhật nếu Store thay đổi
  */
 const getPrIdData = computed(() => {
   const dataStoreRP = store.state.currentCheckpoint;
+  if (!dataStoreRP) return null;
 
-  // 1. Nếu Store rỗng, trả về null để hiện Loading
-  if (!dataStoreRP) {
-    return null;
-  }
-
-  // 2. Bóc tách lớp vỏ bọc bên ngoài
   let actualData = dataStoreRP?.data?.data || dataStoreRP?.data || dataStoreRP;
 
-  // 3. XỬ LÝ QUAN TRỌNG: Nếu dữ liệu đang nằm trong một mảng, lấy phần tử đầu tiên ra
   if (Array.isArray(actualData)) {
     if (actualData.length > 0) {
-      actualData = actualData[0]; // Lấy Object ở vị trí đầu tiên
+      actualData = actualData[0];
     } else {
-      return null; // Nếu mảng rỗng thì cũng coi như không có data
+      return null;
     }
   }
-
-  console.log("Dữ liệu ĐÃ CHUẨN HOÁ thành Object:", actualData);
-
-  // Trả về một Object chuẩn xác cho giao diện HTML đọc
   return actualData;
 });
 
 /**
- * Tự động chuyển đổi reportImages sang định dạng Base64 để hiển thị
+ * LOGIC MỚI: Xử lý danh sách ảnh (Hỗ trợ cả Offline File và Online Base64)
+ * Watch này sẽ chạy mỗi khi getPrIdData thay đổi
  */
-const listGroups = computed(() => {
-  const data = getPrIdData.value;
-
+watch(() => getPrIdData.value, async (data) => {
   if (data && data.noteGroups && Array.isArray(data.noteGroups)) {
-    return data.noteGroups.map((group: any) => {
-      // Xử lý mảng ảnh bên trong từng group
-      const processedImages = (group.reportImages || []).map((img: any) => {
-        const base64String = img.priImage;
-        const mimeType = img.priImageType || 'jpeg';
+    // Biến đếm để lấy đúng file từ mảng phẳng imageFiles (lưu lúc sendData)
+    let totalImgIdx = 0;
 
-        const imageUrl = base64String.startsWith('data:image')
-          ? base64String
-          : `data:image/${mimeType};base64,${base64String}`;
+    const processedGroups = await Promise.all(data.noteGroups.map(async (group: any) => {
+      const processedImages = await Promise.all((group.reportImages || []).map(async (img: any) => {
+        let imageUrl = '';
+
+        // TRƯỜNG HỢP 1: Dữ liệu Offline Mock (Ảnh lưu trong bộ nhớ máy)
+        if (data.isOfflineMock && data.imageFiles && data.imageFiles[totalImgIdx]) {
+          const fileName = data.imageFiles[totalImgIdx];
+          const localUrl = await ImageService.getDisplayUrl(fileName);
+          imageUrl = localUrl || '';
+          totalImgIdx++; // Tăng index để ảnh tiếp theo lấy file tiếp theo
+        }
+        // TRƯỜNG HỢP 2: Dữ liệu Online (Ảnh là chuỗi Base64 từ API)
+        else {
+          const base64String = img.priImage || '';
+          const mimeType = img.priImageType || 'jpeg';
+          imageUrl = base64String.startsWith('data:image')
+            ? base64String
+            : `data:image/${mimeType};base64,${base64String}`;
+        }
 
         return { url: imageUrl, note: group.priImageNote };
-      });
+      }));
 
       return {
         note: group.priImageNote || 'Không có tiêu đề',
         images: processedImages
       };
-    }).filter((group: any) => group.images.length > 0); // Chỉ lấy những group có ảnh
+    }));
+
+    // Cập nhật vào ref để giao diện hiển thị
+    listGroups.value = processedGroups.filter((g: any) => g.images.length > 0);
+  } else {
+    listGroups.value = [];
   }
-  return [];
-});
+}, { immediate: true });
 
 const formatDate = (dateStr: string) => {
   if (!dateStr) return '';
@@ -220,7 +229,6 @@ const allImagesFlat = computed(() => {
 });
 
 const openModal = (img: { url: string; note?: string }) => {
-  // Tìm index của tấm hình này trong mảng tổng
   const index = allImagesFlat.value.findIndex(x => x.url === img.url);
   currentSlideIndex.value = index !== -1 ? index : 0;
   isModalOpen.value = true;

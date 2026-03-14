@@ -29,6 +29,8 @@ const store = createStore({
       isSyncing: false,
 
       currentCheckpoint: null,
+      syncMode: 'silent',
+      isSyncingOffline: false,
     }
   },
 
@@ -37,11 +39,15 @@ const store = createStore({
 
   // 3. Mutations: Hàm đồng bộ duy nhất được phép thay đổi State
   mutations: {
+    SET_SYNC_OFFLINE_STATUS(state, status) {
+      state.isSyncingOffline = status;
+    },
     SET_PSID(state, data) {
       state.psId = data
     },
     SET_DATAMENU(state, data) {
-      state.dataMenu = data
+      if (JSON.stringify(state.dataMenu) === JSON.stringify(data)) return;
+      state.dataMenu = data;
     },
     SET_DATACP(state, data) {
       state.dataListCP = data
@@ -56,6 +62,10 @@ const store = createStore({
     },
     SET_DATA_LIST_ROUTE(state: any, data) {
       const apiData = Array.isArray(data) ? data : (data?.data || []);
+      if (JSON.stringify(state.dataListRoute) === JSON.stringify(apiData)) {
+        console.log("Dữ liệu lộ trình không đổi, bỏ qua Render");
+        return;
+      }
       const localRoutes = state.dataListRoute || [];
 
       let mergedList = [...apiData];
@@ -111,19 +121,25 @@ const store = createStore({
       }));
     },
     SET_DATAUSER(state, data) {
-      state.dataUser = data
+      // CHỈ GÁN KHI DỮ LIỆU THỰC SỰ KHÁC BIỆT
+      if (JSON.stringify(state.dataUser) === JSON.stringify(data)) return;
+      state.dataUser = data;
     },
     SET_DATASCANQR(state, data) {
       state.dataScanQr = data
     },
     SET_TOKEN(state, data) {
-      state.token = data
+      // Tránh ghi đè token giống hệt nhau làm Router kích hoạt lại Navigation Guard
+      if (state.token === data) return;
+      state.token = data;
     },
     SET_CURRENT_TIME(state, data) {
       state.currentTime = data
     },
     SET_HYDRATED(state, data) {
-      state.isHydrated = data
+      // Nếu đã hydrated rồi thì không cho phép set về false nữa (trừ khi logout)
+      if (state.isHydrated && data === false) return;
+      state.isHydrated = data;
     },
     SET_ROUTE_ID(state, id) {
       state.routeId = id
@@ -132,12 +148,19 @@ const store = createStore({
       state.dataReportNoteCategory = data
     },
     SET_NETWORK_STATUS(state, status) {
+      // Chỉ cập nhật nếu thực sự thay đổi từ true sang false hoặc ngược lại
+      if (state.isOnline === status) return;
       state.isOnline = status;
     },
-    SET_SYNC_STATUS(state, { progress, message, isSyncing }) {
+    SET_SYNC_STATUS(state, { progress, message, isSyncing, mode = 'silent' }) {
+      // Chỉ cập nhật nếu giá trị thực sự thay đổi
+      if (state.isSyncing === isSyncing && state.syncProgress === progress && state.syncMessage === message) {
+        return;
+      }
       state.syncProgress = progress;
       state.syncMessage = message;
       state.isSyncing = isSyncing;
+      state.syncMode = mode;
     },
     SET_CURRENT_CHECKPOINT(state, data) {
       state.currentCheckpoint = data;
@@ -308,67 +331,93 @@ const store = createStore({
 
   // 4. Actions: Xử lý bất đồng bộ (API call) rồi gọi mutation
   actions: {
-    async syncAllData({ commit }, apiList) {
-      console.log('Bắt đầu đồng bộ Vuex...');
+    // Trong store/index.ts -> actions:
+    async syncAllData({ commit, state }, { apiList, mode = 'silent' }) {
+      if (!apiList) return;
 
-      // Thêm key 'mutation' để mapping tự động từ API -> SQLite -> Vuex
-      const steps = [
-        { name: 'CheckPoints', key: 'checkpoints', isLarge: false, mutation: 'SET_DATACP' },
-        { name: 'CheckPointsId', key: 'checkpoints_id', isLarge: false, mutation: 'SET_DATA_CHECKPOINTS_ID' },
-        { name: 'AreaBU', key: 'area_bu', isLarge: false, mutation: 'SET_DATA_AREA_BU' },
-        { name: 'ListRoute', key: 'list_route', isLarge: false, mutation: 'SET_DATA_LIST_ROUTE' },
-        { name: 'ReportNoteCategory', key: 'report_note_category', isLarge: false, mutation: 'SET_DATA_REPORT_NOTE_CATEGORY' },
-        { name: 'BasePointReportView', key: 'base_point_report', isLarge: false, mutation: 'SET_DATA_BASE_POINT_REPORT_VIEW' },
-      ];
+      // 1. Khởi động trạng thái đồng bộ
+      commit('SET_SYNC_STATUS', {
+        progress: 0,
+        message: mode === 'overlay' ? 'Bắt đầu đồng bộ dữ liệu...' : 'Đang cập nhật...',
+        isSyncing: true,
+        mode: mode
+      });
 
-      commit('SET_SYNC_STATUS', { progress: 0, message: 'Khởi động đồng bộ...', isSyncing: true });
+      const steps: {
+        name: string,
+        key: string,
+        mutation: string,
+        stateKey: keyof typeof state // Định nghĩa stateKey phải là 1 key của state
+      }[] = [
+          { name: 'CheckPoints', key: 'checkpoints', mutation: 'SET_DATACP', stateKey: 'dataListCP' },
+          { name: 'CheckPointsId', key: 'checkpoints_id', mutation: 'SET_DATA_CHECKPOINTS_ID', stateKey: 'dataCheckpointsId' },
+          { name: 'AreaBU', key: 'area_bu', mutation: 'SET_DATA_AREA_BU', stateKey: 'dataAreaBU' },
+          { name: 'ListRoute', key: 'list_route', mutation: 'SET_DATA_LIST_ROUTE', stateKey: 'dataListRoute' },
+          { name: 'ReportNoteCategory', key: 'report_note_category', mutation: 'SET_DATA_REPORT_NOTE_CATEGORY', stateKey: 'dataReportNoteCategory' },
+          { name: 'BasePointReportView', key: 'base_point_report', mutation: 'SET_DATA_BASE_POINT_REPORT_VIEW', stateKey: 'dataBasePointReportView' },
+        ];
 
       for (let i = 0; i < steps.length; i++) {
         const step = steps[i];
-        const progress = Math.round((i / steps.length) * 100);
-
-        commit('SET_SYNC_STATUS', {
-          progress,
-          message: `Đang tải ${step.name}...`,
-          isSyncing: true
-        });
+        const progress = Math.round(((i + 1) / steps.length) * 100);
 
         try {
           const apiFunc = apiList[step.key];
-          if (typeof apiFunc !== 'function') {
-            console.warn(`Không tìm thấy hàm API cho key: ${step.key}`);
-            continue;
+          if (typeof apiFunc === 'function') {
+            const response = await apiFunc();
+            const data = response?.data;
+
+            if (data) {
+              // Lưu SQLite chạy ngầm
+              storageService.set(step.key, data);
+
+              // CẢI TIẾN QUAN TRỌNG: 
+              // 1. So sánh JSON để tránh ghi đè dữ liệu giống hệt nhau (nguyên nhân gây chớp UI)
+              // Tìm đến dòng này trong syncAllData và sửa thành:
+              const currentDataStr = JSON.stringify((state as any)[step.stateKey]);
+              const newDataStr = JSON.stringify(data);
+
+              if (currentDataStr !== newDataStr) {
+                // 2. Sử dụng requestAnimationFrame để báo cho trình duyệt 
+                // cập nhật UI mượt mà hơn, tránh nghẽn luồng xử lý
+                requestAnimationFrame(() => {
+                  commit(step.mutation, data);
+                });
+              }
+            }
           }
-
-          const response = await apiFunc();
-          const data = response?.data;
-
-          if (!data) {
-            console.warn(`Dữ liệu của ${step.name} trả về null/undefined`);
-            continue;
-          }
-
-          // 1. LƯU VÀO SQLITE
-          if (step.isLarge && Array.isArray(data)) {
-            await Promise.all(data.map(item => {
-              const id = item.id || item.cpId || item.prId || item.userCode;
-              return storageService.set(`${step.key}_${id}`, item);
-            }));
-          } else {
-            await storageService.set(step.key, data);
-          }
-
-          // 2. TỰ ĐỘNG COMMIT LÊN VUEX STATE
-          if (step.mutation) {
-            commit(step.mutation, data);
-          }
-
         } catch (error) {
-          console.error(`Lỗi tại bước ${step.name}:`, error);
+          console.error(`Lỗi đồng bộ bước ${step.name}:`, error);
+        }
+
+        // Chỉ cập nhật status nếu là mode overlay, silent thì giảm bớt số lần commit
+        if (mode === 'overlay' || i === steps.length - 1) {
+          commit('SET_SYNC_STATUS', {
+            progress,
+            message: `Đang tải ${step.name}...`,
+            isSyncing: true,
+            mode: mode
+          });
         }
       }
 
-      commit('SET_SYNC_STATUS', { progress: 100, message: 'Đồng bộ hoàn tất!', isSyncing: false });
+      // 2. Hoàn tất đồng bộ: Giữ trạng thái một chút để mượt mà
+      commit('SET_SYNC_STATUS', {
+        progress: 100,
+        message: 'Hoàn tất!',
+        isSyncing: true,
+        mode: mode
+      });
+
+      // Tăng thời gian chờ lên 1.5s để UI ổn định hẳn rồi mới tắt thanh progress
+      setTimeout(() => {
+        commit('SET_SYNC_STATUS', {
+          progress: 0,
+          message: '',
+          isSyncing: false,
+          mode: 'silent'
+        });
+      }, 1500);
     },
 
     // Hàm khôi phục khóa từ Storage

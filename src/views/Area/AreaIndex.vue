@@ -66,15 +66,16 @@
                                     </ion-col>
                                     <ion-col class="ion-text-end">
                                         <ion-note class="labelItem">
+                                            <ion-label class="labelItem">Ca tuần tra: {{ item.psHourFrom }}h</ion-label>
                                             <ion-label class="labelItem">{{ item.reportName }}</ion-label>
-                                            <div>
+                                            <ion-label class="labelItem">
                                                 {{ item.realityPoint }}/{{ item.planPoint }} điểm
-                                            </div>
-                                            <div>
+                                            </ion-label>
+                                            <ion-label class="labelItem">
                                                 {{ item.realityHours ? `${item.realityHours} giờ` : '' }}
                                                 {{ item.realityMinutes ? `${item.realityMinutes} phút` : '' }}
                                                 {{ item.realitySeconds ? `${item.realitySeconds} giây` : '' }}
-                                            </div>
+                                            </ion-label>
                                         </ion-note>
                                     </ion-col>
                                 </ion-row>
@@ -171,6 +172,7 @@ import { useStore } from 'vuex';
 import presentAlert from '@/mixins/presentAlert';
 import AreaBU from '@/api/AreaBU';
 import storageService from '@/services/storage.service';
+import { ImageService } from '@/services/image.service';
 
 const store = useStore();
 
@@ -259,14 +261,15 @@ const fetchAreasData = async (areaId: number) => {
             const response = await AreaBU.postAreaBU(payload);
             const fetchedAreas = Array.isArray(response?.data) ? response.data : (response?.data?.data || []);
 
-            // QUAN TRỌNG: Lưu lại cho Offline
+            // --- SỬA TẠI ĐÂY: Lưu lại cho Offline ---
             store.commit('SET_DATA_AREA_BU', fetchedAreas);
             await storageService.set('area_bu', fetchedAreas);
+            // ---------------------------------------
 
             const foundArea = fetchedAreas.find((item: any) => item.areaId === areaId);
             currentOptions.value = foundArea ? (foundArea.patrolShifts || []) : [];
         } else {
-            // Lấy từ Store (Đã được Hydrate từ SQLite khi khởi động App)
+            // Logic Offline giữ nguyên như cũ của bạn là đã chuẩn
             const rawData = store.state.dataAreaBU;
             let areas = Array.isArray(rawData) ? rawData : (rawData?.data || []);
             if (areas[0]?.data) areas = areas[0].data;
@@ -274,7 +277,6 @@ const fetchAreasData = async (areaId: number) => {
             const foundArea = areas.find((item: any) => Number(item.areaId) === Number(areaId));
             let offlineShifts = foundArea ? (foundArea.patrolShifts || []) : [];
 
-            // Logic phân quyền giữ nguyên
             if (!isAdmin) {
                 const hasUserIdProp = offlineShifts.length > 0 && offlineShifts[0].hasOwnProperty('userId');
                 if (hasUserIdProp) {
@@ -319,32 +321,74 @@ const handleModalSelection = async (item: any) => {
     isModalOpen.value = false;
     currentPage.value = 1;
 
+    console.log(item);
+
     setTimeout(async () => {
         isLoading.value = true;
         selectedItem.value = [item.routeName, item.routeId];
 
         try {
-            let reportData = null;
+            let finalReports = [];
+
             if (isOnline.value) {
-                const responseBU = await PointReport.postBasePointReportView(item.psId);
-                const actualArray = Array.isArray(responseBU?.data) ? responseBU.data : (responseBU?.data?.data || []);
-                reportData = { data: actualArray };
+                // 1. Online: Lấy từ API
+                try {
+                    const responseBU = await PointReport.postBasePointReportView(item.psId);
+                    finalReports = Array.isArray(responseBU?.data) ? responseBU.data : (responseBU?.data?.data || []);
+                } catch (e) {
+                    console.warn("API lỗi, tự động chuyển sang chế độ Offline data.");
+                }
             }
 
-            if (!reportData) {
-                const rawCheckpointsId = store.state.dataBasePointReportView;
-                const allReports = Array.isArray(rawCheckpointsId) ? rawCheckpointsId : (rawCheckpointsId?.data || []);
+            // 2. Nếu Offline HOẶC API Online trả về rỗng
+            if (finalReports.length === 0) {
+                const rawBase = store.state.dataBasePointReportView;
+                console.log(rawBase);
 
-                const filteredReports = allReports.filter((rep: any) =>
-                    rep.psId === item.psId || rep.psId === Number(item.psId)
+                const baseReports = Array.isArray(rawBase) ? rawBase : (rawBase?.data || []);
+
+                const rawRecent = store.state.dataCheckpointsId;
+                const recentReports = Array.isArray(rawRecent) ? rawRecent : (rawRecent?.data || []);
+
+                // Gộp và Lọc theo psId
+                const combined = [...recentReports, ...baseReports];
+                const filtered = combined.filter((rep: any) =>
+                    Number(rep.psId) === Number(item.psId)
                 );
 
-                reportData = { data: filteredReports };
+                // Khử trùng theo cpId (Giữ lại bản ghi mới nhất hoặc bản ghi có Mock)
+                const uniqueMap = new Map();
+                filtered.forEach(r => {
+                    // Nếu đã tồn tại nhưng bản ghi mới là Mock (đang chờ sync), ưu tiên bản ghi Mock
+                    if (uniqueMap.has(r.cpId) && !r.isOfflineMock) return;
+                    uniqueMap.set(r.cpId, r);
+                });
+
+                finalReports = Array.from(uniqueMap.values());
             }
 
-            store.commit('SET_DATACP', [reportData]);
+            // 3. XỬ LÝ HÌNH ẢNH THUMBNAIL (Nếu có ảnh offline)
+            // Duyệt qua danh sách để "phục hồi" thumbnail từ bộ nhớ máy cho các item Mock
+            finalReports = await Promise.all(finalReports.map(async (report: any) => {
+                if (report.isOfflineMock && report.imageFiles?.length > 0) {
+                    // Lấy ảnh đầu tiên làm thumbnail để hiển thị ở danh sách
+                    const thumbUrl = await ImageService.getDisplayUrl(report.imageFiles[0]);
+                    return { ...report, thumbUrl }; // Gắn thêm thumbUrl để UI bind vào <ion-img>
+                }
+                return report;
+            }));
+
+            // 4. SẮP XẾP: Mới nhất lên đầu
+            finalReports.sort((a: any, b: any) => {
+                return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+            });
+
+            // Gửi dữ liệu vào Vuex để hiển thị
+            store.commit('SET_DATACP', [{ data: finalReports }]);
             await nextTick();
 
+        } catch (error) {
+            console.error("Lỗi xử lý báo cáo:", error);
         } finally {
             isLoading.value = false;
         }
