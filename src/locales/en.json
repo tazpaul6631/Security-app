@@ -173,7 +173,7 @@
       "incomplete-patrol": "You are currently in an incomplete patrol route. Please finish the route before logging out!",
       "data-loss": "Data loss warning!",
       "pending-reports": "You have {pendingItems.value.length} unsynchronized reports. Please connect to the network to synchronize before logging out!",
-      "msg-logout-sync-offline": "The system has ${totalUnsynced} process(es) pending synchronization due to a weak or missing internet connection. Logging out now will result in data loss. Please wait for a stable connection!"
+      "msg-logout-sync-offline": "The system has {totalUnsynced} process(es) pending synchronization due to a weak or missing internet connection. Logging out now will result in data loss. Please wait for a stable connection!"
     },
     "use-camera": {
       "max-images": "Maximum 10 images allowed!",

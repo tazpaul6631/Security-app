@@ -65,25 +65,25 @@ const getGlobalApiList = (userData: any) => {
 
     list_route: () => {
       const lockedPsId = store.state.psId;
-      const now = new Date();
-      const currentHour = now.getHours();
-      const hoursArray = [];
-      for (let i = currentHour; i <= 23; i++) {
-        hoursArray.push(i);
-      }
-      // Tự động build lại ngày tháng hiện tại, ghi đè lên userData cũ
-      const payload = {
-        ...userData,
-        psDay: now.getDate(),
-        psMonth: now.getMonth() + 1,
-        psYear: now.getFullYear(),
-        psHours: hoursArray
-      };
+      // const now = new Date();
+      // const currentHour = now.getHours();
+      // const hoursArray = [];
+      // for (let i = currentHour; i <= 23; i++) {
+      //   hoursArray.push(i);
+      // }
+      // // Tự động build lại ngày tháng hiện tại, ghi đè lên userData cũ
+      // const payload = {
+      //   ...userData,
+      //   psDay: now.getDate(),
+      //   psMonth: now.getMonth() + 1,
+      //   psYear: now.getFullYear(),
+      //   psHours: hoursArray
+      // };
 
       if (lockedPsId) {
-        return PatrolShiftView.postPatrolShiftView({ ...payload, psId: lockedPsId });
+        return PatrolShiftView.postPatrolShiftView({ getOfflineData: true, psId: lockedPsId, areaId: userData.userAreaId });
       }
-      return PatrolShiftView.postPatrolShiftView(payload);
+      return PatrolShiftView.postPatrolShiftView({ getOfflineData: true, areaId: userData.userAreaId });
     },
 
     report_note_category: () => ReportNoteCategory.postReportNoteCategory(),
@@ -102,7 +102,7 @@ const safeSync = async (isInitApp = false) => {
   await loadPendingItems();
   const deleteQueue = (await storage.get('offline_delete_queue')) || [];
   const wrongScanQueue = (await storage.get('offline_wrong_scan_queue')) || [];
-  const hasOfflineData = pendingItems.value.length > 0 || deleteQueue.length > 0 || wrongScanQueue.length > 0;;
+  const hasOfflineData = pendingItems.value.length > 0 || deleteQueue.length > 0 || wrongScanQueue.length > 0;
 
   // LƯỚI LỌC LOGIC THÔNG MINH Ở ĐÂY:
   // Nếu chỉ là có mạng lại (không phải F5) VÀ không có data offline -> THOÁT LUÔN!
@@ -146,25 +146,25 @@ const safeSync = async (isInitApp = false) => {
       const lightApiList = {
         list_route: () => {
           const lockedPsId = store.state.psId;
-          const now = new Date();
-          const currentHour = now.getHours();
-          const hoursArray = [];
-          for (let i = currentHour; i <= 23; i++) {
-            hoursArray.push(i);
-          }
+          // const now = new Date();
+          // const currentHour = now.getHours();
+          // const hoursArray = [];
+          // for (let i = currentHour; i <= 23; i++) {
+          //   hoursArray.push(i);
+          // }
 
-          const payload = {
-            ...userData,
-            psDay: now.getDate(),
-            psMonth: now.getMonth() + 1,
-            psYear: now.getFullYear(),
-            psHours: hoursArray
-          };
+          // const payload = {
+          //   ...userData,
+          //   psDay: now.getDate(),
+          //   psMonth: now.getMonth() + 1,
+          //   psYear: now.getFullYear(),
+          //   psHours: hoursArray
+          // };
 
           if (lockedPsId) {
-            return PatrolShiftView.postPatrolShiftView({ ...payload, psId: lockedPsId });
+            return PatrolShiftView.postPatrolShiftView({ getOfflineData: true, psId: lockedPsId, areaId: userData.userAreaId });
           }
-          return PatrolShiftView.postPatrolShiftView(payload);
+          return PatrolShiftView.postPatrolShiftView({ getOfflineData: true, areaId: userData.userAreaId });
         }
       };
       await store.dispatch('syncAllData', { apiList: lightApiList, mode: 'silent' });

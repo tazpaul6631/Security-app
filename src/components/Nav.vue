@@ -102,7 +102,7 @@ const handleLogout = async () => {
     if (totalUnsynced > 0) {
       const alert = await alertController.create({
         header: t('messages.nav.data-loss'),
-        message: t('messages.nav.msg-logout-sync-offline'),
+        message: t('messages.nav.msg-logout-sync-offline', { totalUnsynced }),
         buttons: [{ text: t('messages.nav.got'), role: 'cancel' }]
       });
       await alert.present();

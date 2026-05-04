@@ -28,16 +28,12 @@ npm install
 # Thay đổi capacitor
 
 npm run build
-
 npx cap copy
-
 npx cap sync
 
 # Xóa bên android file
-
 flatDir{ dirs 'src/main/libs', 'libs' }
 
 # Thêm 
-
 implementation fileTree(dir: 'src/main/libs', include: ['*.jar', '*.aar'])
 implementation fileTree(dir: 'libs', include: ['*.jar', '*.aar'])

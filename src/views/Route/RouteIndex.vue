@@ -22,7 +22,8 @@
               <ion-card-title>{{ currentActiveRoute.routeName }}</ion-card-title>
               <ion-card-subtitle>
                 {{ $t('routes.code') }} {{ currentActiveRoute.routeCode }} | {{ $t('routes.shift') }} {{
-                  currentActiveRoute.psHourFrom }}h
+                  currentActiveRoute.psHourFrom }}h - {{ currentActiveRoute.psDay }}/{{ currentActiveRoute.psMonth }}/{{
+                currentActiveRoute.psYear }}
                 <br />
                 <span class="timer-display" :class="timerColorClass" v-show="formattedTime">
                   <ion-icon :icon="timeOutline" class="icon-clock"></ion-icon>
@@ -63,10 +64,10 @@
     <ion-footer v-if="!isLoading && currentActiveRoute" class="ion-no-border">
       <ion-toolbar class="ion-padding-horizontal ion-padding-bottom">
         <div class="active-controls">
-          <ion-button color="danger" @click="confirmCancelRoute" class="btn-cancel">
+          <!-- <ion-button color="danger" @click="confirmCancelRoute" class="btn-cancel">
             <ion-icon slot="start" :icon="trashOutline"></ion-icon>
             {{ $t('routes.cancel') }}
-          </ion-button>
+          </ion-button> -->
           <ion-button color="success" class="btn-continue" @click="handleContinueScanning(currentActiveRoute.routeId)">
             <ion-icon slot="start" :icon="qrCodeOutline"></ion-icon>
             {{ $t('routes.scan') }}
@@ -120,6 +121,9 @@ interface Route {
   routeCode: string;
   psHourFrom: number;
   psHourTo: number;
+  psDay: number;
+  psMonth: number;
+  psYear: number;
   routeDetails: RouteDetail[];
   areaId: number;
   roleId: number;
@@ -134,7 +138,8 @@ const isLoading = ref(true);
 const isScanning = ref(false);
 const userRoleIsAdmin = ref();
 
-const shiftDataList = ref<Route[]>([]);
+// const shiftDataList = ref<Route[]>([]);
+const shiftDataList = computed<Route[]>(() => store.state.dataListRoute || []);
 const currentHour = ref(new Date().getHours());
 let timer: any = null;
 const lockedRouteId = computed(() => store.state.unfinishedRouteId);
@@ -147,20 +152,22 @@ const cardRoutePointsRef = ref<any>(null);
 const currentActiveRoute = computed(() => {
   const routes = shiftDataList.value;
   const userData = store.state.dataUser;
-
-  // Lấy thêm psId đang bị khóa từ Store
   const lockedPsId = store.state.psId;
 
   if (!userData || !Array.isArray(routes)) return null;
 
   const uRole = Number(userData.userRoleId);
   const uArea = Number(userData.userAreaId);
-  const hNow = currentHour.value;
 
-  // ƯU TIÊN 1: Lộ trình đang làm dở (Locked) - Dù quá giờ vẫn phải hiện ca này
+  // --- LẤY NGÀY GIỜ HỆ THỐNG HIỆN TẠI ---
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+  const currentDay = now.getDate();
+  const hNow = currentHour.value; // Biến giờ bạn đã theo dõi bằng setInterval
+
+  // ƯU TIÊN 1: Lộ trình đang làm dở (Bị khóa - Không quan tâm quá giờ)
   if (lockedRouteId.value !== null) {
-
-    // Tìm CHÍNH XÁC cả 2 điều kiện
     let lockedRoute;
     if (lockedPsId) {
       lockedRoute = routes.find((r: any) =>
@@ -169,7 +176,6 @@ const currentActiveRoute = computed(() => {
       );
     }
 
-    // Nếu không tìm thấy bằng psId, fallback về tìm bằng routeId
     if (!lockedRoute) {
       lockedRoute = routes.find((r: any) => Number(r.routeId) === Number(lockedRouteId.value));
     }
@@ -180,24 +186,51 @@ const currentActiveRoute = computed(() => {
     }
   }
 
-  // ƯU TIÊN 2: Tìm lộ trình mới theo khung giờ hiện tại
+  // ƯU TIÊN 2: Tìm lộ trình mới theo KHUNG GIỜ VÀ NGÀY THÁNG hiện tại
   const foundRoute = routes.find((r: any) => {
+    // Sai Khu vực hoặc Sai Quyền -> Bỏ qua
     if (Number(r.areaId) !== uArea || Number(r.roleId) !== uRole) return false;
 
     const f = Number(r.psHourFrom);
     const t = Number(r.psHourTo);
-    let isMatchHour = false;
 
-    // Xử lý ca trong ngày và ca qua đêm
+    // Kiểm tra xem ca trực này có thuộc "Ngày Hôm Nay" không
+    const isToday = (
+      Number(r.psYear) === currentYear &&
+      Number(r.psMonth) === currentMonth &&
+      Number(r.psDay) === currentDay
+    );
+
+    let isMatchDateAndHour = false;
+
+    // TRƯỜNG HỢP 1: Ca trong ngày (psHourFrom <= psHourTo, vd: 8h->16h hoặc 23h->23h)
     if (f <= t) {
-      isMatchHour = hNow >= f && hNow <= t;
-    } else {
-      // Ca qua đêm (Ví dụ 21h tối đến 6h sáng)
-      isMatchHour = hNow >= f || hNow <= t;
+      isMatchDateAndHour = isToday && (hNow >= f && hNow <= t);
+    }
+    // TRƯỜNG HỢP 2: Ca qua đêm (psHourFrom > psHourTo, vd: 22h->06h)
+    else {
+      if (hNow >= f) {
+        // Nếu đang là 23h đêm (trước 00:00), thì nó phải thuộc ngày hôm nay
+        isMatchDateAndHour = isToday;
+      } else if (hNow <= t) {
+        // Nếu đang là 2h sáng (sau 00:00), thì ca trực này bản chất được bắt đầu từ NGÀY HÔM QUA
+        const yesterday = new Date(now);
+        yesterday.setDate(now.getDate() - 1);
+
+        const isYesterday = (
+          Number(r.psYear) === yesterday.getFullYear() &&
+          Number(r.psMonth) === yesterday.getMonth() + 1 &&
+          Number(r.psDay) === yesterday.getDate()
+        );
+        isMatchDateAndHour = isYesterday;
+      }
     }
 
+    // Kiểm tra xem ca đã hoàn thành chưa
     const isFinished = r.routeDetails.every((p: any) => p.rdIsComplete);
-    return isMatchHour && !isFinished && !r.isComplete;
+
+    // Bắt buộc phải khớp (Ngày + Giờ) và chưa hoàn thành
+    return isMatchDateAndHour && !isFinished && !r.isComplete;
   });
 
   return foundRoute ? { ...foundRoute } : null;
@@ -303,18 +336,41 @@ const hasDataButFinished = computed(() => {
   const routes = shiftDataList.value;
   if (!Array.isArray(routes)) return false;
 
-  const routeInHour = routes.find(r => {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+  const currentDay = now.getDate();
+  const hNow = currentHour.value;
+
+  const routeInHour = routes.find((r: any) => {
     const f = Number(r.psHourFrom);
     const t = Number(r.psHourTo);
+
+    const isToday = (
+      Number(r.psYear) === currentYear &&
+      Number(r.psMonth) === currentMonth &&
+      Number(r.psDay) === currentDay
+    );
+
     if (f <= t) {
-      return currentHour.value >= f && currentHour.value <= t;
+      return isToday && (hNow >= f && hNow <= t);
     } else {
-      return currentHour.value >= f || currentHour.value <= t;
+      if (hNow >= f) return isToday;
+      if (hNow <= t) {
+        const yesterday = new Date(now);
+        yesterday.setDate(now.getDate() - 1);
+        return (
+          Number(r.psYear) === yesterday.getFullYear() &&
+          Number(r.psMonth) === yesterday.getMonth() + 1 &&
+          Number(r.psDay) === yesterday.getDate()
+        );
+      }
+      return false;
     }
   });
 
   if (routeInHour) {
-    return routeInHour.isComplete || routeInHour.routeDetails.every(p => p.rdIsComplete);
+    return routeInHour.isComplete || routeInHour.routeDetails.every((p: any) => p.rdIsComplete);
   }
   return false;
 });
@@ -341,40 +397,40 @@ const handleAppWakeUp = () => {
 const loadRouteData = async () => {
   isLoading.value = true;
 
-  if (!store.state.isOnline) {
-    shiftDataList.value = store.state.dataListRoute || [];
-  } else {
-    try {
-      const userData = store.state.dataUser?.data || store.state.dataUser || {};
-      const areaId = userData.userAreaId;
+  // if (!store.state.isOnline) {
+  //   shiftDataList.value = store.state.dataListRoute || [];
+  // } else {
+  //   try {
+  //     const userData = store.state.dataUser?.data || store.state.dataUser || {};
+  //     const areaId = userData.userAreaId;
 
-      const now = new Date();
-      const currentHour = now.getHours();
-      const hoursArray = [];
-      for (let i = currentHour; i <= 23; i++) {
-        hoursArray.push(i);
-      }
-      const dateInfo = {
-        psDay: now.getDate(),
-        psMonth: now.getMonth() + 1,
-        psYear: now.getFullYear(),
-        userAreaId: areaId,
-        psHours: hoursArray
-      };
+  //     const now = new Date();
+  //     const currentHour = now.getHours();
+  //     const hoursArray = [];
+  //     for (let i = currentHour; i <= 23; i++) {
+  //       hoursArray.push(i);
+  //     }
+  //     const dateInfo = {
+  //       psDay: now.getDate(),
+  //       psMonth: now.getMonth() + 1,
+  //       psYear: now.getFullYear(),
+  //       userAreaId: areaId,
+  //       psHours: hoursArray
+  //     };
 
-      const response: any = await PatrolShiftView.postPatrolShiftView(dateInfo);
-      const apiDataRaw = response?.data?.data || response?.data || [];
+  //     const response: any = await PatrolShiftView.postPatrolShiftView(dateInfo);
+  //     const apiDataRaw = response?.data?.data || response?.data || [];
 
-      // Vuex sẽ kiểm tra xem ca bị khóa đã isComplete chưa, nếu có nó sẽ TỰ MỞ KHÓA
-      store.commit('SET_DATA_LIST_ROUTE', apiDataRaw);
+  //     // Vuex sẽ kiểm tra xem ca bị khóa đã isComplete chưa, nếu có nó sẽ TỰ MỞ KHÓA
+  //     store.commit('SET_DATA_LIST_ROUTE', apiDataRaw);
 
-      shiftDataList.value = store.state.dataListRoute;
-      await storageService.set('list_route', store.state.dataListRoute);
+  //     shiftDataList.value = store.state.dataListRoute;
+  //     await storageService.set('list_route', store.state.dataListRoute);
 
-    } catch (error) {
-      shiftDataList.value = store.state.dataListRoute || [];
-    }
-  }
+  //   } catch (error) {
+  //     shiftDataList.value = store.state.dataListRoute || [];
+  //   }
+  // }
 
   isLoading.value = false;
 };
@@ -490,7 +546,7 @@ const cancelButtons = [
 
         // Reset và về Home
         await store.dispatch('resetCurrentRoute');
-        shiftDataList.value = store.state.dataListRoute;
+        // shiftDataList.value = store.state.dataListRoute;
         router.replace('/home');
       } finally {
         isCancelling.value = false;

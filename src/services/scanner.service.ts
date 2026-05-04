@@ -65,7 +65,43 @@ export const scannerService = {
     }
 
     if (!currentRoute) {
-      currentRoute = dataListRoute.find((r: any) => Number(r.routeId) === Number(routeId));
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth() + 1;
+      const currentDay = now.getDate();
+      const hNow = now.getHours();
+
+      currentRoute = dataListRoute.find((r: any) => {
+        if (Number(r.routeId) !== Number(routeId)) return false;
+
+        const f = Number(r.psHourFrom);
+        const tHour = Number(r.psHourTo);
+        const isToday = (
+          Number(r.psYear) === currentYear &&
+          Number(r.psMonth) === currentMonth &&
+          Number(r.psDay) === currentDay
+        );
+
+        let isMatchDateAndHour = false;
+
+        if (f <= tHour) {
+          isMatchDateAndHour = isToday && (hNow >= f && hNow <= tHour);
+        } else {
+          if (hNow >= f) {
+            isMatchDateAndHour = isToday;
+          } else if (hNow <= tHour) {
+            const yesterday = new Date(now);
+            yesterday.setDate(now.getDate() - 1);
+            isMatchDateAndHour = (
+              Number(r.psYear) === yesterday.getFullYear() &&
+              Number(r.psMonth) === yesterday.getMonth() + 1 &&
+              Number(r.psDay) === yesterday.getDate()
+            );
+          }
+        }
+
+        const isFinished = r.routeDetails.every((p: any) => p.rdIsComplete);
+        return isMatchDateAndHour && !isFinished && !r.isComplete;
+      });
     }
 
     if (!currentRoute) {

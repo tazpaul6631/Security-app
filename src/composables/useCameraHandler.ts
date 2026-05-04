@@ -99,7 +99,7 @@ export function useCameraHandler() {
 
       // Cắt mảng dự phòng
       if (photosToAdd.length > slotsLeft) {
-        await showToast(t('messages.use-camera.taking-images', { count: slotsLeft }));
+        await showToast(t('messages.use-camera.taking-images', { slotsLeft }));
         photosToAdd = photosToAdd.slice(0, slotsLeft);
       }
 

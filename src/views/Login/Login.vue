@@ -125,18 +125,18 @@ const handleLogin = async () => {
 
   try {
     const isOnline = store.state.isOnline;
-    const now = new Date();
-    const currentHour = now.getHours();
-    const hoursArray = [];
-    for (let i = currentHour; i <= 23; i++) {
-      hoursArray.push(i);
-    }
-    const dateInfo = {
-      psDay: now.getDate(),
-      psMonth: now.getMonth() + 1,
-      psYear: now.getFullYear(),
-      psHours: hoursArray
-    };
+    // const now = new Date();
+    // const currentHour = now.getHours();
+    // const hoursArray = [];
+    // for (let i = currentHour; i <= 23; i++) {
+    //   hoursArray.push(i);
+    // }
+    // const dateInfo = {
+    //   psDay: now.getDate(),
+    //   psMonth: now.getMonth() + 1,
+    //   psYear: now.getFullYear(),
+    //   psHours: hoursArray
+    // };
 
     if (isOnline) {
       const responseBU = await Login.postUserValidate(loginDetail);
@@ -144,8 +144,7 @@ const handleLogin = async () => {
 
       if (result?.success && result.data) {
         const userData = {
-          ...result.data,
-          ...dateInfo,
+          ...result.data
         };
 
         store.commit('SET_DATAUSER', userData);
@@ -169,7 +168,7 @@ const handleLogin = async () => {
           checkpoints: () => CheckPointScanQr.postCheckPointView(checkpointPayload),
           // checkpoints_id: () => PointReport.postPointReportView(),
           area_bu: () => AreaBU.postAreaBU({ areaId: userData.userAreaId }),
-          list_route: () => PatrolShiftView.postPatrolShiftView(userData),
+          list_route: () => PatrolShiftView.postPatrolShiftView({ getOfflineData: true, areaId: userData.userAreaId }),
           report_note_category: () => ReportNoteCategory.postReportNoteCategory(),
           base_point_report: () => PointReport.postBasePointReportView(0),
         };
