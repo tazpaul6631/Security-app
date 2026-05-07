@@ -23,7 +23,7 @@
               <ion-card-subtitle>
                 {{ $t('routes.code') }} {{ currentActiveRoute.routeCode }} | {{ $t('routes.shift') }} {{
                   currentActiveRoute.psHourFrom }}h - {{ currentActiveRoute.psDay }}/{{ currentActiveRoute.psMonth }}/{{
-                currentActiveRoute.psYear }}
+                  currentActiveRoute.psYear }}
                 <br />
                 <span class="timer-display" :class="timerColorClass" v-show="formattedTime">
                   <ion-icon :icon="timeOutline" class="icon-clock"></ion-icon>

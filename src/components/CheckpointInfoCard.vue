@@ -25,7 +25,8 @@
         <ion-col>
           <ion-card-subtitle>
             {{ $t('areas.report.code') }} {{ currentActiveRoute.routeCode }} | {{ $t('areas.report.shift')
-            }} {{ currentActiveRoute.psHourFrom }}h
+            }} {{ currentActiveRoute.psHourFrom }}h - {{ currentActiveRoute.psDay }}/{{ currentActiveRoute.psMonth }}/{{
+              currentActiveRoute.psYear }}
           </ion-card-subtitle>
         </ion-col>
       </ion-row>

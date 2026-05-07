@@ -728,9 +728,7 @@ const store = createStore({
         'data_scanqr',
       ];
 
-      for (const key of keysToRemove) {
-        await storageService.remove(key);
-      }
+      await Promise.all(keysToRemove.map(key => storageService.remove(key)));
 
       // 4. PHỤC HỒI LẠI DANH SÁCH TÀI KHOẢN OFFLINE
       if (offlineUsers && Object.keys(offlineUsers).length > 0) {

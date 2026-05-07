@@ -148,9 +148,9 @@ const handleLogin = async () => {
         };
 
         store.commit('SET_DATAUSER', userData);
-        store.commit('SET_TOKEN', userData.userPassword);
+        store.commit('SET_TOKEN', userData.accessToken);
         await storageService.set('user_data', userData);
-        await storageService.set('user_token', userData.userPassword);
+        await storageService.set('user_token', userData.accessToken);
 
         let offlineUsers = await storageService.get('offline_users_dict') || {};
         offlineUsers[loginDetail.userCode] = {

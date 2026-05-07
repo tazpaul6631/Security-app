@@ -38,7 +38,7 @@
 <script setup lang="ts">
 import {
   IonButton, IonContent, IonHeader, IonPage, IonToolbar, IonRouterOutlet,
-  IonIcon, alertController, IonBadge, useIonRouter, IonText, IonSpinner, IonButtons
+  IonIcon, alertController, IonBadge, useIonRouter, IonText, IonButtons
 } from '@ionic/vue';
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -47,7 +47,10 @@ import router from '@/router';
 import { useStore } from 'vuex';
 import { useOfflineManager } from '@/composables/useOfflineManager';
 import storageService from '@/services/storage.service';
+import Logout from '@/api/Logout';
+import { useRouteTimer } from '@/composables/useRouteTimer';
 
+const { clearTimer } = useRouteTimer();
 const store = useStore();
 const { t } = useI18n();
 
@@ -109,18 +112,33 @@ const handleLogout = async () => {
       return;
     }
 
-    // --- BẮT ĐẦU QUY TRÌNH DỌN DẸP TRIỆT ĐỂ ---
-    console.log('Tiến hành dọn dẹp và đăng xuất...');
+    // 3. GỌI API LOGOUT LÊN BACKEND
+    // Chỉ gọi khi có mạng và có thông tin user
+    if (store.state.isOnline && store.state.dataUser?.userId) {
+      try {
+        console.log('Đang gọi API đăng xuất...');
+        await Logout.postLogout({
+          userId: store.state.dataUser.userId
+        });
+      } catch (apiError) {
+        // Lỗi câm: Backend lỗi hoặc rớt mạng giữa chừng, nhưng VẪN CHO PHÉP XÓA LOCAL
+        console.warn("API Logout thất bại, tiếp tục đăng xuất local:", apiError);
+      }
+    }
+
+    // --- 4. BẮT ĐẦU QUY TRÌNH DỌN DẸP TRIỆT ĐỂ LOCAL ---
+    console.log('Tiến hành dọn dẹp state và storage...');
+    await clearTimer();
     await store.dispatch('logout');
     router.replace('/login');
 
   } catch (error) {
-    console.error("Lỗi câm (Silent Error) khi đăng xuất:", error);
+    console.error("Lỗi hệ thống khi đăng xuất:", error);
 
-    // 3. CHỐT CHẶN CUỐI CÙNG: Nếu SQLite bị khóa hoặc code gãy, VẪN HIỆN ALERT
+    // CHỐT CHẶN CUỐI CÙNG: Nếu SQLite bị khóa hoặc code gãy
     const alert = await alertController.create({
       header: 'Lỗi hệ thống',
-      message: 'Đang xử lý đồng bộ ngầm, hệ thống tạm thời bận. Vui lòng đợi vài giây và thử lại!',
+      message: 'Hệ thống tạm thời bận. Vui lòng đợi vài giây và thử lại!',
       buttons: ['OK']
     });
     await alert.present();
