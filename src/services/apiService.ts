@@ -1,6 +1,5 @@
 import baseURLMixin from '@/mixins/baseURLMixin';
 import storageService from '@/services/storage.service';
-// 1. IMPORT STORE VÀO ĐÂY (Điều chỉnh lại đường dẫn nếu cần)
 import store from '@/composables/useVuex';
 
 const baseURL: string = baseURLMixin.url;
@@ -46,14 +45,17 @@ const request = {
       // 2. Xử lý lỗi 401 (Token hết hạn)
       if (response.status === 401) {
         console.warn("Token hết hạn, đang đăng xuất...");
-        await storageService.clear();
+
+        store.commit('SET_TOKEN', null);
+        await storageService.remove('user_token');
+
         window.location.href = '/login';
         throw response; // Phải throw để dừng tiến trình
       }
 
       // 3. NẾU SERVER BÁO LỖI HỆ THỐNG (500, 502, 503, 504) -> ÉP VỀ OFFLINE
       if (response.status >= 500) {
-        console.warn(`⚠️ Server báo lỗi ${response.status}. Chuyển ép sang Offline Mode!`);
+        console.warn(`Server báo lỗi ${response.status}. Chuyển ép sang Offline Mode!`);
         store.commit('SET_NETWORK_STATUS', false);
         throw response; // Vẫn throw để UI bên ngoài bắt được lỗi và nhảy vào khối catch hiển thị cảnh báo (nếu có)
       }
@@ -75,7 +77,7 @@ const request = {
       // 4. BẮT LỖI SẬP MẠNG HOÀN TOÀN (Server sập hẳn, mất kết nối mạng, CORS)
       // fetch API sẽ ném ra TypeError với message 'Failed to fetch' khi không thể chạm tới máy chủ
       if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
-        console.warn("⚠️ Không thể kết nối tới Server (Network Error). Chuyển ép sang Offline Mode!");
+        console.warn("Không thể kết nối tới Server (Network Error). Chuyển ép sang Offline Mode!");
         store.commit('SET_NETWORK_STATUS', false);
       }
 

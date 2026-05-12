@@ -5,6 +5,7 @@ import storageService from '@/services/storage.service';
 import CheckPointScanQr from '@/api/CheckPointScanQr';
 import presentAlert from '@/mixins/presentAlert';
 import ScanCpQrLog from '@/api/ScanCpQrLog';
+import { loadingController } from '@ionic/vue';
 
 export const scannerService = {
   async requestPermissions() {
@@ -12,7 +13,6 @@ export const scannerService = {
     return camera === 'granted' || camera === 'limited';
   },
 
-  // 1. Hàm này giờ CHỈ DÙNG ĐỂ MỞ CAMERA trên điện thoại và TRẢ VỀ CHUỖI QR
   async startScanning(store: Store<any>, router: Router, routeId: number, t: any): Promise<string | null> {
     const granted = await this.requestPermissions();
     if (!granted) {
@@ -24,16 +24,27 @@ export const scannerService = {
       // 1. Kiểm tra xem máy đã có Google Barcode Module chưa
       const { available } = await BarcodeScanner.isGoogleBarcodeScannerModuleAvailable();
 
-      // 2. Nếu CHƯA CÓ -> Ra lệnh tải, thông báo user chờ, và THOÁT
+      // 2. NẾU CHƯA CÓ -> Bật Loading báo hiệu và tiến hành tải
       if (!available) {
-        // Lệnh yêu cầu Google Play Services tải ngầm module
-        await BarcodeScanner.installGoogleBarcodeScannerModule();
+        const loading = await loadingController.create({
+          message: 'Đang khởi tạo máy quét (chỉ lần đầu)...',
+          spinner: 'bubbles',
+        });
+        await loading.present();
 
-        // QUAN TRỌNG NHẤT: Return null để chặn không cho chạy lệnh scan() phía dưới
-        return null;
+        try {
+          // Yêu cầu Google Play Services tải ngầm module
+          await BarcodeScanner.installGoogleBarcodeScannerModule();
+        } catch (installError) {
+          console.error("Lỗi cài đặt module quét:", installError);
+          await presentAlert.presentAlert('Lỗi', '', 'Không thể tải module máy quét từ Google. Vui lòng kiểm tra mạng!');
+          return null; // Chỉ return null nếu tải THẤT BẠI
+        } finally {
+          await loading.dismiss(); // Nhớ tắt loading
+        }
       }
 
-      // 3. Nếu ĐÃ CÓ SẴN (available === true) -> Bật giao diện Camera quét mã
+      // 3. ĐÃ CÓ SẴN (Hoặc vừa tải xong) -> Chạy thẳng lệnh bật Camera!
       const { barcodes } = await BarcodeScanner.scan();
 
       if (!barcodes || barcodes.length === 0) return null;

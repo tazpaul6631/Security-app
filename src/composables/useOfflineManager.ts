@@ -7,6 +7,7 @@ import { toastController } from '@ionic/vue';
 import PatrolShift from '@/api/PatrolShift';
 import Sync from '@/api/Sync';
 import { useI18n } from 'vue-i18n';
+import router from '@/router';
 
 // Các biến trạng thái dùng chung giữa các instance của composable
 const pendingItems = ref<PendingItem[]>([]);
@@ -334,8 +335,18 @@ export function useOfflineManager() {
           // === BẮT LỖI SOFT ERROR TỪ BACKEND ===
           if (responseData && responseData.success === false) {
 
-            // Hàm includes bắt trúng phóc câu "Point Report này đã tồn tại" của BE
-            if (responseData.message && responseData.message.includes('đã tồn tại')) {
+            const msg = (responseData.message || '').toLowerCase();
+
+            if (responseData.statusCode === 401 || responseData.code === 401 || msg.includes('unauthorized') || msg.includes('token')) {
+              console.warn("Phát hiện Token hết hạn trong Soft Error. Ép văng ra Login!");
+
+              storeInstance.commit('SET_TOKEN', null);
+              await storage.remove('user_token');
+              router.replace('/login');
+              return;
+            }
+
+            if (msg.includes('đã tồn tại')) {
               console.warn(`[Sync] Báo cáo ${item.data.cpId} đã tồn tại trên Server. Xóa khỏi hàng chờ.`);
               await cleanUpItem(item);
               continue;

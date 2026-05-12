@@ -68,9 +68,12 @@
             <ion-icon slot="start" :icon="trashOutline"></ion-icon>
             {{ $t('routes.cancel') }}
           </ion-button> -->
-          <ion-button color="success" class="btn-continue" @click="handleContinueScanning(currentActiveRoute.routeId)">
-            <ion-icon slot="start" :icon="qrCodeOutline"></ion-icon>
-            {{ $t('routes.scan') }}
+          <ion-button color="success" class="btn-continue" @click="handleContinueScanning(currentActiveRoute.routeId)"
+            :disabled="isScanning">
+            <ion-spinner v-if="isScanning" slot="start" name="crescent"></ion-spinner>
+            <ion-icon v-else slot="start" :icon="qrCodeOutline"></ion-icon>
+
+            {{ isScanning ? 'Đang mở Camera...' : $t('routes.scan') }}
           </ion-button>
         </div>
       </ion-toolbar>
@@ -315,6 +318,13 @@ const handleContinueScanning = async (routeId: number) => {
 
   isScanning.value = true;
 
+  const failSafeTimer = setTimeout(() => {
+    if (isScanning.value) {
+      isScanning.value = false;
+      console.warn("Cảnh báo: Phản hồi mở Camera quá chậm, tự động nhả khóa!");
+    }
+  }, 5000);
+
   try {
     const result = await scannerService.startScanning(store, router, routeId, t);
     if (result) {
@@ -322,12 +332,11 @@ const handleContinueScanning = async (routeId: number) => {
     }
   } catch (error: any) {
     const errStr = String(error).toLowerCase();
-
-    // Bỏ qua nếu user chủ động tắt giao diện camera
     if (errStr.includes('canceled') || errStr.includes('user canceled')) {
       return;
     }
   } finally {
+    clearTimeout(failSafeTimer);
     isScanning.value = false;
   }
 };
@@ -625,7 +634,7 @@ watch(() => store.state.isSyncing, (isSyncingNow) => {
 .btn-continue {
   --border-radius: 8px;
   --ion-color-contrast: white !important;
-  height: 50px;
+  height: 55px;
   font-weight: bold;
   flex: 1;
   font-size: 20px;

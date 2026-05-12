@@ -1032,7 +1032,7 @@ useBackButton(10, () => {
 .btn-status,
 .btn-submit,
 .btn-camera {
-  height: 40px;
+  height: 55px;
   font-size: 16px;
   font-weight: bold;
 }

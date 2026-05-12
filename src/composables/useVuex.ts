@@ -704,13 +704,20 @@ const store = createStore({
       }
     },
 
-    async logout({ commit }) {
+    async logout({ commit, state }) {
       console.log('--- [LOGOUT] Đang dọn dẹp dữ liệu ---');
 
       // 1. BẢO LƯU DANH SÁCH TÀI KHOẢN OFFLINE TRƯỚC KHI XÓA
       let offlineUsers = null;
       try {
         offlineUsers = await storageService.get('offline_users_dict');
+        const currentUser: any = state.dataUser;
+
+        if (offlineUsers && currentUser?.userCode) {
+          if (offlineUsers[currentUser.userCode]) {
+            offlineUsers[currentUser.userCode].profile.accessToken = null;
+          }
+        }
       } catch (e) {
         console.error("Không lấy được danh sách offline trước khi xóa", e);
       }
@@ -718,7 +725,7 @@ const store = createStore({
       // 2. Xóa sạch RAM
       commit('CLEAR_ALL_DATA');
 
-      // 3. Xóa sạch Ổ CỨNG
+      // 3. Xóa sạch Ổ CỨNG (SỬA Ở ĐÂY: Thêm các key nghiệp vụ vào)
       const keysToRemove = [
         'user_token',
         'user_data',
@@ -726,6 +733,12 @@ const store = createStore({
         'unfinished_route_id',
         'current_ps_id',
         'data_scanqr',
+        'checkpoints',
+        'area_bu',
+        'list_route',
+        'report_note_category',
+        'base_point_report',
+        'menu_data'
       ];
 
       await Promise.all(keysToRemove.map(key => storageService.remove(key)));

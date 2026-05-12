@@ -76,6 +76,7 @@ import CryptoJS from 'crypto-js';
 import { useI18n } from 'vue-i18n';
 import { BarcodeScanner } from '@capacitor-mlkit/barcode-scanning';
 import { App } from '@capacitor/app';
+import { useOfflineManager } from '@/composables/useOfflineManager';
 
 // Các API và Service
 import Login from '@/api/Login';
@@ -88,7 +89,7 @@ import PatrolShiftView from '@/api/PatrolShiftView';
 
 const router = useRouter();
 const store = useStore();
-
+const { syncData, loadPendingItems, pendingItems } = useOfflineManager();
 const errorMessage = ref('');
 const isLoading = ref(false);
 
@@ -159,6 +160,26 @@ const handleLogin = async () => {
         };
         await storageService.set('offline_users_dict', offlineUsers);
 
+        // =================================================================
+        // THỨ TỰ THỰC THI MỚI (CHỐNG MẤT PROGRESS VÀ MẤT KHÓA CA TRỰC)
+        // =================================================================
+
+        // BƯỚC 1: Phục hồi RAM từ SQLite ngay lập tức để lấy lại khóa unfinishedRouteId
+        // và danh sách điểm đã quét trước khi bị F5 văng ra ngoài.
+        await store.dispatch('initApp');
+
+        // BƯỚC 2: Kiểm tra và đẩy hàng chờ kẹt lên Server
+        await loadPendingItems();
+        const deleteQueue = (await storageService.get('offline_delete_queue')) || [];
+        const wrongScanQueue = (await storageService.get('offline_wrong_scan_queue')) || [];
+
+        if (pendingItems.value.length > 0 || deleteQueue.length > 0 || wrongScanQueue.length > 0) {
+          console.log("Phát hiện có data kẹt trước đó, đang tiến hành đẩy lên Server...");
+          await syncData(); // Tự động dọn dẹp hàng chờ
+        }
+
+        // BƯỚC 3: SAU KHI Server đã nhận đủ báo cáo kẹt -> Kéo Master Data về
+        // Lúc này Server sẽ trả về đúng các điểm 'status: 1' mà bạn vừa đẩy lên!
         const checkpointPayload = {
           areaIds: getDynamicAreaIds(userData.userAreaId),
           roleIdStr: String(userData.userRoleId)
@@ -166,7 +187,6 @@ const handleLogin = async () => {
 
         const apiList = {
           checkpoints: () => CheckPointScanQr.postCheckPointView(checkpointPayload),
-          // checkpoints_id: () => PointReport.postPointReportView(),
           area_bu: () => AreaBU.postAreaBU({ areaId: userData.userAreaId }),
           list_route: () => PatrolShiftView.postPatrolShiftView({ getOfflineData: true, areaId: userData.userAreaId }),
           report_note_category: () => ReportNoteCategory.postReportNoteCategory(),
@@ -193,10 +213,17 @@ const handleLogin = async () => {
       const inputHashed = hashPassword(loginDetail.userPassword);
 
       if (inputHashed === savedAccount.hashedPassword) {
+
+        if (!savedAccount.profile.accessToken) {
+          errorMessage.value = 'Phiên làm việc đã kết thúc. Vui lòng kết nối mạng để đăng nhập lại!';
+          isLoading.value = false;
+          return;
+        }
+
         store.commit('SET_DATAUSER', savedAccount.profile);
-        store.commit('SET_TOKEN', savedAccount.profile.userPassword);
+        store.commit('SET_TOKEN', savedAccount.profile.accessToken);
         await storageService.set('user_data', savedAccount.profile);
-        await storageService.set('user_token', savedAccount.profile.userPassword);
+        await storageService.set('user_token', savedAccount.profile.accessToken);
 
         await store.dispatch('initApp');
         router.replace('/home');
